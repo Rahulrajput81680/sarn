@@ -59,11 +59,11 @@ export default function Login() {
     >
       {/* ── Left panel ── */}
       <div className="hidden lg:flex flex-col justify-between flex-1 min-w-0 px-14 py-12">
-        <img src="/images/icon.png" alt="Wixabotic" className="h-10 w-auto object-contain object-left" />
+        <img src="/images/sarn.png" alt="SarnConnect" className="h-10 w-auto object-contain object-left" />
 
         <div>
           <h1 className="text-3xl font-bold text-gray-900 leading-snug mb-8">
-            Welcome Back to<br />Wixabotic
+            Welcome Back to<br />SarnConnect
           </h1>
           <ul className="space-y-4">
             {LEFT_FEATURES.map((f) => (
@@ -95,7 +95,7 @@ export default function Login() {
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="flex justify-center mb-8 lg:hidden">
-            <img src="/images/icon.png" alt="Wixabotic" className="h-12 w-auto object-contain" />
+            <img src="/images/sarn.png" alt="SarnConnect" className="h-12 w-auto object-contain" />
           </div>
 
           <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
@@ -182,7 +182,7 @@ export default function Login() {
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    setAuth({ name: 'Super Admin', email: 'admin@wixabotic.com', role: 'super_admin' }, 'dev-token')
+                    setAuth({ name: 'Super Admin', email: 'admin@SarnConnect.com', role: 'super_admin' }, 'dev-token')
                     navigate('/admin')
                   }}
                   className="text-xs px-3 py-1.5 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 font-medium"
@@ -192,7 +192,7 @@ export default function Login() {
                 <button
                   onClick={() => {
                     logout()
-                    setAuth({ name: 'Demo User', email: 'user@wixabotic.com', role: 'admin' }, 'dev-token-user')
+                    setAuth({ name: 'Demo User', email: 'user@SarnConnect.com', role: 'admin' }, 'dev-token-user')
                     navigate('/dashboard')
                   }}
                   className="text-xs px-3 py-1.5 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 font-medium"
@@ -209,7 +209,7 @@ export default function Login() {
       <div className="hidden lg:flex flex-col flex-1 min-w-0 px-12 py-12 relative overflow-hidden">
         <div className="relative z-10">
           <h2 className="text-2xl font-bold text-gray-900 mb-1">
-            Why Choose <span className="text-green-600">Wixabotic</span>?
+            Why Choose <span className="text-green-600">SarnConnect</span>?
           </h2>
           <ul className="space-y-3.5 mt-6">
             {RIGHT_FEATURES.map((f) => (

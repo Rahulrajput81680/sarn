@@ -13,14 +13,14 @@ import OnboardingWizard from '../components/onboarding/OnboardingWizard'
 const NAV = [
   { label: 'Dashboard',          icon: LayoutDashboard, to: '/dashboard' },
   { label: 'Bulk Messaging',     icon: Send,            to: '/bulk-messaging' },
-  { label: 'Campaigns',          icon: Megaphone,       to: '/campaigns' },
+  // { label: 'Campaigns',          icon: Megaphone,       to: '/campaigns' },
   { label: 'Contacts',           icon: Users,           to: '/contacts' },
-  { label: 'Team Inbox',         icon: MessageSquare,   to: '/inbox' },
-  { label: 'Chatbot Builder',    icon: Bot,             to: '/chatbot' },
-  { label: 'Analytics',          icon: BarChart3,       to: '/analytics' },
+  // { label: 'Team Inbox',         icon: MessageSquare,   to: '/inbox' },
+  // { label: 'Chatbot Builder',    icon: Bot,             to: '/chatbot' },
+  // { label: 'Analytics',          icon: BarChart3,       to: '/analytics' },
   { label: 'Templates',          icon: FileText,        to: '/templates' },
-  { label: 'Team & Access',      icon: UserCog,         to: '/team' },
-  { label: 'Billing',            icon: CreditCard,      to: '/billing' },
+  // { label: 'Team & Access',      icon: UserCog,         to: '/team' },
+  // { label: 'Billing',            icon: CreditCard,      to: '/billing' },
 ]
 
 const AUTO_COLLAPSE_ROUTES = ['/inbox', '/chatbot']
@@ -73,12 +73,12 @@ export default function DashboardLayout() {
 
         <div className="h-14 flex items-center justify-center px-3 border-b border-green-100/60">
           {sidebarOpen ? (
-            <img src="/images/icon.png" alt="Wixabotic" className="h-8 w-auto object-contain" />
+            <img src="/images/sarn.png" alt="Wixabotic" className="h-8 w-auto object-contain" />
           ) : (
             <img
-              src="/images/icon.png"
+              src="/images/sarn.png"
               alt="W"
-              className="w-10 h-5 object-cover object-left shrink-0"
+              className="w-5 h-5 object-cover object-left shrink-0"
             />
           )}
         </div>

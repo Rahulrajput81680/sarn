@@ -99,7 +99,7 @@ const SEED = [
     id: 7, name: 'account_update_notice', category: 'utility', language: 'Hindi', status: 'draft',
     header: { type: 'none', text: '', url: '' },
     body: "नमस्ते {{1}},\n\nआपके अकाउंट में बदलाव किया गया है। अगर यह आपने नहीं किया, तो तुरंत हमसे संपर्क करें।",
-    footer: 'Wixabotic Support',
+    footer: 'SarnConnect Support',
     buttons: [{ type: 'call', label: 'Call Support', value: '+919876543210' }],
     updatedAt: '5 hours ago', usedIn: 0,
   },
@@ -142,9 +142,9 @@ function WaPreview({ form }) {
           {/* WA header bar */}
           <div className="bg-[#075e54] px-3 py-2 flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-green-400 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">W</span>
+              <span className="text-white text-xs font-bold">SC</span>
             </div>
-            <p className="text-white text-xs font-medium flex-1">Wixabotic</p>
+            <p className="text-white text-xs font-medium flex-1">SarnConnect</p>
           </div>
 
           {/* Chat area */}

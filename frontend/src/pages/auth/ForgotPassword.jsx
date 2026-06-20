@@ -10,7 +10,7 @@ export default function ForgotPassword() {
     >
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <img src="/images/icon.png" alt="Wixabotic" className="h-12 mx-auto object-contain" />
+          <img src="/images/sarn.png" alt="SarnConnect" className="h-12 mx-auto object-contain" />
         </div>
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
           <h2 className="text-xl font-bold text-gray-900 mb-1">Reset password</h2>

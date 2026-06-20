@@ -39,11 +39,11 @@ export default function Register() {
     >
       {/* ── Left panel ── */}
       <div className="hidden lg:flex flex-col justify-between flex-1 min-w-0 px-14 py-12">
-        <img src="/images/icon.png" alt="Wixabotic" className="h-10 w-auto object-contain object-left" />
+        <img src="/images/sarn.png" alt="SarnConnect" className="h-10 w-auto object-contain object-left" />
 
         <div>
           <h1 className="text-3xl font-bold text-gray-900 leading-snug mb-8">
-            Start Growing with<br />Wixabotic
+            Start Growing with<br />SarnConnect
           </h1>
           <ul className="space-y-4">
             {LEFT_FEATURES.map((f) => (
@@ -75,7 +75,7 @@ export default function Register() {
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="flex justify-center mb-8 lg:hidden">
-            <img src="/images/icon.png" alt="Wixabotic" className="h-12 w-auto object-contain" />
+            <img src="/images/icon.png" alt="SarnConnect" className="h-12 w-auto object-contain" />
           </div>
 
           <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
@@ -138,7 +138,7 @@ export default function Register() {
       <div className="hidden lg:flex flex-col flex-1 min-w-0 px-12 py-12 relative overflow-hidden">
         <div className="relative z-10">
           <h2 className="text-2xl font-bold text-gray-900 mb-1">
-            Why Choose <span className="text-green-600">Wixabotic</span>?
+            Why Choose <span className="text-green-600">SarnConnect</span>?
           </h2>
           <ul className="space-y-4 mt-6">
             {RIGHT_FEATURES.map((f) => (

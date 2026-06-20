@@ -9,10 +9,10 @@ const EASE_OUT = [0.23, 1, 0.32, 1]
 
 /* Dummy admin credentials */
 const ADMIN_ACCOUNTS = [
-  { email: 'admin@wixabotic.io',    password: 'admin123',    role: ROLES.SUPER_ADMIN, name: 'Kunal Sharma'  },
-  { email: 'support@wixabotic.io',  password: 'support123',  role: ROLES.ADMIN,       name: 'Arjun Mehta'  },
-  { email: 'billing@wixabotic.io',  password: 'billing123',  role: ROLES.ADMIN,       name: 'Priya Sharma' },
-  { email: 'compliance@wixabotic.io',password: 'comply123',  role: ROLES.ADMIN,       name: 'Sneha Rao'    },
+  { email: 'admin@SarnConnect.io',    password: 'admin123',    role: ROLES.SUPER_ADMIN, name: 'Kunal Sharma'  },
+  { email: 'support@SarnConnect.io',  password: 'support123',  role: ROLES.ADMIN,       name: 'Arjun Mehta'  },
+  { email: 'billing@SarnConnect.io',  password: 'billing123',  role: ROLES.ADMIN,       name: 'Priya Sharma' },
+  { email: 'compliance@SarnConnect.io',password: 'comply123',  role: ROLES.ADMIN,       name: 'Sneha Rao'    },
 ]
 
 export default function AdminLogin() {
@@ -63,7 +63,7 @@ export default function AdminLogin() {
             <ShieldCheck size={28} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white">Master Admin</h1>
-          <p className="text-sm text-slate-400 mt-1">Wixabotic Control Panel</p>
+          <p className="text-sm text-slate-400 mt-1">SarnConnect Control Panel</p>
         </div>
 
         {/* Warning */}
@@ -83,7 +83,7 @@ export default function AdminLogin() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@wixabotic.io"
+                placeholder="admin@SarnConnect.io"
                 required
                 className="w-full pl-10 pr-4 py-3 bg-slate-800 border border-slate-700 text-white placeholder:text-slate-500 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
               />

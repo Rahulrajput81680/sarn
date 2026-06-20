@@ -172,12 +172,12 @@ export default function AdminLayout() {
         <div className="flex flex-col items-center justify-center px-3 py-4 border-b border-slate-700">
           {sidebarOpen ? (
             <>
-              <img src="/images/icon.png" alt="Wixabotic" className="h-8 w-auto object-contain  invert" />
+              <img src="/images/sarn.png" alt="Wixabotic" className="h-8 w-auto object-contain  invert" />
               <span className="text-xs text-red-400 font-medium mt-1">Master Admin</span>
             </>
           ) : (
             <img
-              src="/images/icon.png"
+              src="/images/sarn.png"
               alt="W"
               className="w-10 h-5 object-cover object-left shrink-0"
             />
