@@ -1,10 +1,13 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Check } from 'lucide-react'
+import { toast } from 'sonner'
 import Input from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
+import axiosInstance from '../../api/axios'
+import useAuthStore from '../../store/authStore'
 
 const schema = z.object({
   name: z.string().min(2, 'Min 2 chars'),
@@ -31,6 +34,24 @@ export default function Register() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
   })
+  const { setAuth } = useAuthStore()
+  const navigate = useNavigate()
+
+  const onSubmit = async (data) => {
+    try {
+      const res = await axiosInstance.post('/api/v1/auth/register', {
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        businessName: data.company,
+      })
+      setAuth(res.data.data.user, res.data.data.token)
+      toast.success('Account created! Welcome to SarnConnect.')
+      navigate('/dashboard')
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Registration failed. Please try again.')
+    }
+  }
 
   return (
     <div
@@ -82,7 +103,7 @@ export default function Register() {
             <h2 className="text-2xl font-bold text-gray-900 mb-1">Create account</h2>
             <p className="text-sm text-gray-500 mb-6">Start your 14-day free trial</p>
 
-            <form className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <Input
                   label="Full name"

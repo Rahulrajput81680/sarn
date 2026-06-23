@@ -58,6 +58,8 @@ import Analytics from '../pages/client/analytics/Analytics'
 import Templates from '../pages/client/templates/Templates'
 import TeamAccess from '../pages/client/team/TeamAccess'
 import Billing from '../pages/client/billing/Billing'
+import Profile from '../pages/client/profile/Profile'
+import Settings from '../pages/client/settings/Settings'
 
 export default function AppRouter() {
   return (
@@ -91,6 +93,8 @@ export default function AppRouter() {
           <Route path="/templates" element={<Templates />} />
           <Route path="/team" element={<TeamAccess />} />
           <Route path="/billing" element={<Billing />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
 
         {/* Master Admin */}

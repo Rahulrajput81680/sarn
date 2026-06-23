@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, CheckCheck, Check, Send, StickyNote,
@@ -8,6 +8,9 @@ import {
   Smile, AtSign, ChevronDown, Clock, AlertTriangle,
   LayoutTemplate,
 } from 'lucide-react'
+import axiosInstance from '../../../api/axios'
+import socket from '../../../api/socket'
+import useAuthStore from '../../../store/authStore'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
 
@@ -462,25 +465,135 @@ function ProfilePanel({ conv, assignee, onAssign, onToggleLabel }) {
   )
 }
 
+/* ─── Helpers ────────────────────────────────────────────── */
+
+const COLORS = ['bg-green-500', 'bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-amber-500', 'bg-red-500']
+const colorFor = (name) => COLORS[(name || 'U').charCodeAt(0) % COLORS.length]
+
+const fmtTime = (d) => {
+  if (!d) return ''
+  const date = new Date(d)
+  const now = new Date()
+  const diff = (now - date) / 1000
+  if (diff < 60)   return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`
+  return date.toLocaleDateString()
+}
+
+const normalizeConv = (c) => ({
+  id: c._id,
+  name: c.contact?.name || 'Unknown',
+  phone: c.contact?.phone || '',
+  avatar: (c.contact?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
+  color: colorFor(c.contact?.name),
+  status: c.status,
+  unread: c.unreadCount || 0,
+  assignee: c.assignee?._id || c.assignee || null,
+  labels: c.labels || [],
+  lastMsg: c.lastMessage?.text || '',
+  time: fmtTime(c.updatedAt),
+  window: c.window?.open
+    ? { open: true, expiresIn: c.window.expiresAt ? fmtTime(c.window.expiresAt) + ' left' : '' }
+    : { open: false, expiresIn: null },
+  _id: c._id,
+})
+
+const normalizeMsg = (m) => ({
+  id: m._id,
+  type: m.type,
+  text: m.text,
+  time: fmtTime(m.timestamp || m.createdAt),
+  status: m.status,
+  agent: m.sentBy?._id || m.sentBy || null,
+})
+
 /* ─── Main Inbox ─────────────────────────────────────────── */
 
 export default function Inbox() {
-  const [convs,       setConvs]       = useState(CONVERSATIONS)
-  const [messages,    setMessages]    = useState(MSG_MAP)
-  const [activeId,    setActiveId]    = useState(1)
+  const { user } = useAuthStore()
+  const [convs,       setConvs]       = useState([])
+  const [messages,    setMessages]    = useState({})
+  const [activeId,    setActiveId]    = useState(null)
   const [search,      setSearch]      = useState('')
   const [filterTab,   setFilterTab]   = useState('all')
   const [replyText,   setReplyText]   = useState('')
-  const [replyMode,   setReplyMode]   = useState('reply')   // 'reply' | 'note'
+  const [replyMode,   setReplyMode]   = useState('reply')
   const [showCanned,  setShowCanned]  = useState(false)
   const [showProfile, setShowProfile] = useState(true)
   const [showAssignHeader, setShowAssignHeader] = useState(false)
   const [showLabelHeader,  setShowLabelHeader]  = useState(false)
+  const [loading,     setLoading]     = useState(true)
+  const [sending,     setSending]     = useState(false)
   const msgEndRef = useRef(null)
 
   const conv = convs.find((c) => c.id === activeId)
   const msgs = messages[activeId] || []
   const assignee = TEAM.find((t) => t.id === conv?.assignee)
+
+  // ── Fetch conversations ──────────────────────────────────
+  const fetchConvs = useCallback(async () => {
+    try {
+      const { data } = await axiosInstance.get('/api/v1/conversations', { params: { filter: filterTab } })
+      const normalized = (data.data?.conversations || []).map(normalizeConv)
+      setConvs(normalized)
+      if (normalized.length && !activeId) setActiveId(normalized[0].id)
+    } catch {
+      // fallback to demo data when backend is offline
+      setConvs(CONVERSATIONS)
+      setActiveId(CONVERSATIONS[0]?.id)
+    } finally {
+      setLoading(false)
+    }
+  }, [filterTab])
+
+  useEffect(() => { fetchConvs() }, [fetchConvs])
+
+  // ── Fetch messages when conversation changes ─────────────
+  useEffect(() => {
+    if (!activeId || messages[activeId]) return
+    axiosInstance.get(`/api/v1/conversations/${activeId}/messages`)
+      .then(({ data }) => {
+        setMessages(m => ({ ...m, [activeId]: (data.data?.messages || []).map(normalizeMsg) }))
+      })
+      .catch(() => {
+        setMessages(m => ({ ...m, [activeId]: MSG_MAP[activeId] || [] }))
+      })
+  }, [activeId])
+
+  // ── Socket.io real-time ──────────────────────────────────
+  useEffect(() => {
+    socket.connect()
+    socket.emit('join_tenant', user?.tenant?.id || user?.tenant)
+    if (activeId) socket.emit('join_conversation', activeId)
+
+    socket.on('new_message', ({ message }) => {
+      const convId = message.conversation
+      setMessages(m => ({
+        ...m,
+        [convId]: [...(m[convId] || []), normalizeMsg(message)],
+      }))
+      setConvs(cs => cs.map(c => c.id === convId
+        ? { ...c, lastMsg: message.text, unread: message.type === 'customer' ? c.unread + 1 : c.unread }
+        : c
+      ))
+    })
+
+    socket.on('new_conversation_message', ({ conversationId }) => {
+      fetchConvs()
+    })
+
+    socket.on('conversation_updated', ({ conversation }) => {
+      setConvs(cs => cs.map(c => c.id === conversation._id ? { ...c, ...normalizeConv(conversation) } : c))
+    })
+
+    return () => {
+      socket.off('new_message')
+      socket.off('new_conversation_message')
+      socket.off('conversation_updated')
+      socket.disconnect()
+    }
+  }, [activeId, user])
 
   useEffect(() => { msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
 
@@ -492,39 +605,49 @@ export default function Inbox() {
     return true
   })
 
-  const handleSend = () => {
-    if (!replyText.trim()) return
-    const newMsg = {
-      id: Date.now(),
-      type: replyMode === 'note' ? 'note' : 'agent',
-      text: replyText.trim(),
-      time: 'Just now',
-      status: 'delivered',
-      agent: 't1',
-    }
-    setMessages((m) => ({ ...m, [activeId]: [...(m[activeId] || []), newMsg] }))
-    setConvs((cs) => cs.map((c) => c.id === activeId ? { ...c, lastMsg: replyText.trim(), unread: 0 } : c))
+  const handleSend = async () => {
+    if (!replyText.trim() || sending) return
+    const type = replyMode === 'note' ? 'note' : 'agent'
+    const text = replyText.trim()
+    setSending(true)
     setReplyText('')
+    try {
+      await axiosInstance.post(`/api/v1/conversations/${activeId}/messages`, { text, type })
+    } catch {
+      // Optimistic fallback — show locally
+      const newMsg = { id: Date.now(), type, text, time: 'just now', status: 'sent', agent: 't1' }
+      setMessages(m => ({ ...m, [activeId]: [...(m[activeId] || []), newMsg] }))
+      setConvs(cs => cs.map(c => c.id === activeId ? { ...c, lastMsg: text } : c))
+    } finally {
+      setSending(false)
+    }
   }
 
-  const handleResolve = () => {
-    setConvs((cs) => cs.map((c) =>
-      c.id === activeId ? { ...c, status: c.status === 'resolved' ? 'open' : 'resolved' } : c
-    ))
+  const handleResolve = async () => {
+    const newStatus = conv?.status === 'resolved' ? 'open' : 'resolved'
+    setConvs(cs => cs.map(c => c.id === activeId ? { ...c, status: newStatus } : c))
+    try {
+      await axiosInstance.patch(`/api/v1/conversations/${activeId}`, { status: newStatus })
+    } catch {}
   }
 
-  const handleAssign = (memberId) => {
-    setConvs((cs) => cs.map((c) => c.id === activeId ? { ...c, assignee: memberId } : c))
+  const handleAssign = async (memberId) => {
+    setConvs(cs => cs.map(c => c.id === activeId ? { ...c, assignee: memberId } : c))
+    try {
+      await axiosInstance.patch(`/api/v1/conversations/${activeId}`, { assignee: memberId })
+    } catch {}
   }
 
-  const handleToggleLabel = (labelKey) => {
-    setConvs((cs) => cs.map((c) => {
+  const handleToggleLabel = async (labelKey) => {
+    let newLabels
+    setConvs(cs => cs.map(c => {
       if (c.id !== activeId) return c
-      const labels = c.labels.includes(labelKey)
-        ? c.labels.filter((l) => l !== labelKey)
-        : [...c.labels, labelKey]
-      return { ...c, labels }
+      newLabels = c.labels.includes(labelKey) ? c.labels.filter(l => l !== labelKey) : [...c.labels, labelKey]
+      return { ...c, labels: newLabels }
     }))
+    try {
+      await axiosInstance.patch(`/api/v1/conversations/${activeId}`, { labels: newLabels })
+    } catch {}
   }
 
   const FILTER_TABS = ['all', 'unread', 'assigned', 'resolved']
