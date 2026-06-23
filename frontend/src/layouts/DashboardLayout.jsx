@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Send, Megaphone, Users, MessageSquare,
   Bot, BarChart3, FileText, UserCog, CreditCard,
   Bell, Search, LogOut, PanelLeftClose, PanelLeftOpen, Wifi, WifiOff, MoreVertical, Phone,
+  UserCircle, Settings,
 } from 'lucide-react'
 import clsx from 'clsx'
 import useAuthStore from '../store/authStore'
@@ -11,16 +12,21 @@ import useUIStore from '../store/uiStore'
 import OnboardingWizard from '../components/onboarding/OnboardingWizard'
 
 const NAV = [
-  { label: 'Dashboard',          icon: LayoutDashboard, to: '/dashboard' },
-  { label: 'Bulk Messaging',     icon: Send,            to: '/bulk-messaging' },
-  // { label: 'Campaigns',          icon: Megaphone,       to: '/campaigns' },
-  { label: 'Contacts',           icon: Users,           to: '/contacts' },
-  // { label: 'Team Inbox',         icon: MessageSquare,   to: '/inbox' },
-  // { label: 'Chatbot Builder',    icon: Bot,             to: '/chatbot' },
-  // { label: 'Analytics',          icon: BarChart3,       to: '/analytics' },
-  { label: 'Templates',          icon: FileText,        to: '/templates' },
-  // { label: 'Team & Access',      icon: UserCog,         to: '/team' },
-  // { label: 'Billing',            icon: CreditCard,      to: '/billing' },
+  { label: 'Dashboard',       icon: LayoutDashboard, to: '/dashboard' },
+  { label: 'Messages',        icon: MessageSquare,   to: '/inbox' },
+  { label: 'Bulk Messaging',  icon: Send,            to: '/bulk-messaging' },
+  // { label: 'Campaigns',    icon: Megaphone,       to: '/campaigns' },
+  { label: 'Contacts',        icon: Users,           to: '/contacts' },
+  // { label: 'Chatbot',      icon: Bot,             to: '/chatbot' },
+  // { label: 'Analytics',    icon: BarChart3,       to: '/analytics' },
+  { label: 'Templates',       icon: FileText,        to: '/templates' },
+  // { label: 'Team & Access',icon: UserCog,         to: '/team' },
+  // { label: 'Billing',      icon: CreditCard,      to: '/billing' },
+]
+
+const NAV_BOTTOM = [
+  { label: 'My Profile', icon: UserCircle, to: '/profile' },
+  { label: 'Settings',   icon: Settings,   to: '/settings' },
 ]
 
 const AUTO_COLLAPSE_ROUTES = ['/inbox', '/chatbot']
@@ -110,33 +116,73 @@ export default function DashboardLayout() {
           )}
         </div>
 
-        <nav className="relative flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
-          {NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/dashboard'}
-              className={({ isActive }) =>
-                clsx(
-                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150',
-                  !sidebarOpen && 'justify-center',
-                  isActive
-                    ? 'bg-white/85 text-green-700 shadow-sm shadow-green-500 border border-green-100/60'
-                    : 'text-gray-600 hover:bg-white/55 hover:text-gray-900'
-                )
-              }
-              title={!sidebarOpen ? item.label : undefined}
-            >
-              <item.icon size={16} className="shrink-0" />
-              {sidebarOpen && <span>{item.label}</span>}
-            </NavLink>
-          ))}
+        <nav className="relative flex-1 overflow-y-auto px-2 py-3 flex flex-col">
+          <div className="space-y-0.5 flex-1">
+            {NAV.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/dashboard'}
+                className={({ isActive }) =>
+                  clsx(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150',
+                    !sidebarOpen && 'justify-center',
+                    isActive
+                      ? 'bg-white/85 text-green-700 shadow-sm shadow-green-500 border border-green-100/60'
+                      : 'text-gray-600 hover:bg-white/55 hover:text-gray-900'
+                  )
+                }
+                title={!sidebarOpen ? item.label : undefined}
+              >
+                <item.icon size={16} className="shrink-0" />
+                {sidebarOpen && <span>{item.label}</span>}
+              </NavLink>
+            ))}
+          </div>
+
+          {/* Profile & Settings at bottom of nav */}
+          <div className="mt-3 pt-3 border-t border-green-100/60 space-y-0.5">
+            {NAV_BOTTOM.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  clsx(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150',
+                    !sidebarOpen && 'justify-center',
+                    isActive
+                      ? 'bg-white/85 text-green-700 shadow-sm shadow-green-500 border border-green-100/60'
+                      : 'text-gray-600 hover:bg-white/55 hover:text-gray-900'
+                  )
+                }
+                title={!sidebarOpen ? item.label : undefined}
+              >
+                <item.icon size={16} className="shrink-0" />
+                {sidebarOpen && <span>{item.label}</span>}
+              </NavLink>
+            ))}
+          </div>
         </nav>
 
         <div className="relative border-t border-green-100/60 px-3 py-3" ref={profileRef}>
           {/* Sign out popup */}
           {profileMenuOpen && (
             <div className="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-xl shadow-lg border border-gray-100/80 py-1.5 z-20">
+              <button
+                onClick={() => { setProfileMenuOpen(false); navigate('/profile') }}
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                <UserCircle size={15} className="text-gray-400" />
+                My Profile
+              </button>
+              <button
+                onClick={() => { setProfileMenuOpen(false); navigate('/settings') }}
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                <Settings size={15} className="text-gray-400" />
+                Settings
+              </button>
+              <div className="my-1 border-t border-gray-100" />
               <button
                 onClick={() => { setProfileMenuOpen(false); handleLogout() }}
                 className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-red-500 hover:bg-red-50 rounded-lg transition-colors"

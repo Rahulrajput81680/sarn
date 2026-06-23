@@ -11,7 +11,15 @@ const useAuthStore = create(
       isOnboarded: false,
 
       setAuth: (user, token) =>
-        set({ user, token, role: user?.role || null }),
+        set({
+          user,
+          token,
+          role: user?.role || null,
+          isOnboarded: user?.isOnboarded ?? false,
+        }),
+
+      updateUser: (updates) =>
+        set((s) => ({ user: { ...s.user, ...updates } })),
 
       logout: () =>
         set({ user: null, token: null, role: null, isOnboarded: false }),
