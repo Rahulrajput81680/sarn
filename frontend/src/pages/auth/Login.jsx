@@ -180,7 +180,7 @@ export default function Login() {
             <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-dashed border-gray-200">
               <p className="text-xs text-gray-400 mb-2 font-medium">Quick access (dev)</p>
               <div className="flex gap-2">
-                <button
+                {/* <button
                   onClick={() => {
                     setAuth({ name: 'Super Admin', email: 'admin@SarnConnect.com', role: 'super_admin' }, 'dev-token')
                     navigate('/admin')
@@ -188,7 +188,7 @@ export default function Login() {
                   className="text-xs px-3 py-1.5 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 font-medium"
                 >
                   Admin Panel
-                </button>
+                </button> */}
                 <button
                   onClick={() => {
                     logout()
