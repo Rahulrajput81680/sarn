@@ -1,23 +1,27 @@
 const axios = require('axios')
 
-// Real Meta WhatsApp Cloud API provider.
-// This file stays empty/stubbed until you receive API access.
-// Switch to it by setting WA_PROVIDER=meta in .env
+const API_VERSION = 'v20.0'
+const BASE        = `https://graph.facebook.com/${API_VERSION}`
 
-const BASE = `https://graph.facebook.com/v18.0`
-const PHONE_ID = process.env.META_WA_PHONE_ID
-const TOKEN = process.env.META_WA_TOKEN
+// Lazy init so env vars are read at call time, not at require time
+function getClient() {
+  return axios.create({
+    baseURL: BASE,
+    headers: { Authorization: `Bearer ${process.env.META_WA_TOKEN}` },
+    timeout: 10000,
+  })
+}
 
-const metaAxios = axios.create({
-  baseURL: BASE,
-  headers: { Authorization: `Bearer ${TOKEN}` },
-})
+// Meta requires phone numbers as digits only, no +, spaces, or dashes
+function formatPhone(phone) {
+  return String(phone).replace(/\D/g, '')
+}
 
 async function sendTextMessage({ to, text }) {
-  const { data } = await metaAxios.post(`/${PHONE_ID}/messages`, {
+  const { data } = await getClient().post(`/${process.env.META_WA_PHONE_ID}/messages`, {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
-    to,
+    to: formatPhone(to),
     type: 'text',
     text: { preview_url: false, body: text },
   })
@@ -25,22 +29,26 @@ async function sendTextMessage({ to, text }) {
 }
 
 async function sendTemplateMessage({ to, templateName, language = 'en', components = [] }) {
-  const { data } = await metaAxios.post(`/${PHONE_ID}/messages`, {
+  const { data } = await getClient().post(`/${process.env.META_WA_PHONE_ID}/messages`, {
     messaging_product: 'whatsapp',
-    to,
+    to: formatPhone(to),
     type: 'template',
-    template: { name: templateName, language: { code: language }, components },
+    template: {
+      name: templateName,
+      language: { code: language },
+      components,
+    },
   })
   return { messageId: data.messages[0].id, status: 'sent', timestamp: new Date() }
 }
 
 async function getMessageStatus(waMessageId) {
-  // Delivery status comes via webhook — not polled
+  // Delivery status comes via webhook — not polled via API
   return { status: 'sent', timestamp: new Date() }
 }
 
 async function submitTemplate({ name, category, language, components }) {
-  const { data } = await metaAxios.post(
+  const { data } = await getClient().post(
     `/${process.env.META_WA_BUSINESS_ID}/message_templates`,
     { name, category, language, components }
   )
