@@ -1,56 +1,52 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, FileText, Users, Clock, CheckCircle2, ChevronRight,
   ChevronLeft, Upload, X, Plus, AlertTriangle, Check,
   Zap, Calendar, Layers, Gauge, RotateCcw, Eye,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import PageHeader from '../../../components/layout/PageHeader'
+import api from '../../../api/axios'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
 
-/* ─── Demo data ─────────────────────────────────────────── */
+/* ─── API helpers ────────────────────────────────────────── */
 
-const TEMPLATES = [
-  {
-    id: 't1',
-    name: 'Order Confirmation',
-    category: 'Transactional',
-    body: 'Hi {{name}}, your order #{{order_id}} has been confirmed and will be delivered by {{date}}. Track it here: {{link}}',
-    vars: ['name', 'order_id', 'date', 'link'],
-  },
-  {
-    id: 't2',
-    name: 'Promotional Offer',
-    category: 'Marketing',
-    body: 'Hi {{name}}, we have an exclusive {{discount}}% off offer just for you! Valid till {{expiry}}. Shop now: {{link}}',
-    vars: ['name', 'discount', 'expiry', 'link'],
-  },
-  {
-    id: 't3',
-    name: 'Appointment Reminder',
-    category: 'Utility',
-    body: 'Hi {{name}}, reminder: your appointment is scheduled on {{date}} at {{time}}. Reply YES to confirm.',
-    vars: ['name', 'date', 'time'],
-  },
-  {
-    id: 't4',
-    name: 'Payment Reminder',
-    category: 'Transactional',
-    body: 'Dear {{name}}, your payment of ₹{{amount}} is due on {{due_date}}. Pay here: {{link}}',
-    vars: ['name', 'amount', 'due_date', 'link'],
-  },
-]
+const CAT_LABEL = { MARKETING: 'Marketing', UTILITY: 'Utility', AUTHENTICATION: 'Authentication' }
 
-const SEGMENTS = ['All Contacts (2,847)', 'VIP Customers (342)', 'New Users (891)', 'Inactive (456)', 'Opted-in Only (2,601)']
+function extractVars(body = '') {
+  const matches = body.match(/\{\{(\w+)\}\}/g) || []
+  return [...new Set(matches.map((m) => m.replace(/[{}]/g, '')))]
+}
 
-const PAST_CAMPAIGNS = [
-  { id: 1, name: 'Diwali Promo',        template: 'Promotional Offer',    recipients: 1200, sent: 1200, delivered: 1156, read: 887, failed: 44,  date: '12 Jun 2026', status: 'Completed' },
-  { id: 2, name: 'Order Update Blast',  template: 'Order Confirmation',   recipients: 540,  sent: 540,  delivered: 528,  read: 412, failed: 12,  date: '10 Jun 2026', status: 'Completed' },
-  { id: 3, name: 'June Newsletter',     template: 'Promotional Offer',    recipients: 2100, sent: 1950, delivered: 1887, read: 1340, failed: 63,  date: '8 Jun 2026',  status: 'Completed' },
-  { id: 4, name: 'Payment Reminder',    template: 'Payment Reminder',     recipients: 310,  sent: 310,  delivered: 298,  read: 201, failed: 12,  date: '6 Jun 2026',  status: 'Completed' },
-  { id: 5, name: 'Welcome New Users',   template: 'Appointment Reminder', recipients: 890,  sent: 412,  delivered: 398,  read: 287, failed: 14,  date: 'Today',       status: 'Sending' },
-]
+function normalizeBulkTemplate(t) {
+  const bodyComp = (t.components || []).find((c) => c.type === 'BODY')
+  const body = bodyComp?.text || ''
+  return {
+    id: t._id,
+    name: t.name,
+    category: CAT_LABEL[t.category] || t.category,
+    body,
+    vars: extractVars(body),
+  }
+}
+
+function normalizeCampaign(c) {
+  const statusMap = { completed: 'Completed', running: 'Sending', scheduled: 'Scheduled', draft: 'Draft' }
+  return {
+    id: c._id,
+    name: c.name,
+    template: c.template?.name || '—',
+    recipients: c.recipients?.count || c.stats?.total || 0,
+    sent: c.stats?.sent || 0,
+    delivered: c.stats?.delivered || 0,
+    read: c.stats?.read || 0,
+    failed: c.stats?.failed || 0,
+    date: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+    status: statusMap[c.status] || c.status,
+  }
+}
 
 /* ─── Shared components ─────────────────────────────────── */
 
@@ -80,14 +76,17 @@ const categoryColor = {
 
 /* ─── Step 1: Template ──────────────────────────────────── */
 
-function StepTemplate({ selected, onSelect, onNext, varMapping, onVarMapping }) {
+function StepTemplate({ selected, onSelect, onNext, varMapping, onVarMapping, templates }) {
   const [preview, setPreview] = useState(null)
 
   return (
     <div>
       <p className="text-sm text-gray-500 mb-4">Choose an approved WhatsApp template</p>
+      {templates?.length === 0 && (
+        <div className="py-10 text-center text-sm text-gray-400">No approved templates yet. Create and submit a template for approval first.</div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {TEMPLATES.map((t, i) => (
+        {(templates || []).map((t, i) => (
           <motion.button
             key={t.id}
             initial={{ opacity: 0, y: 8 }}
@@ -186,7 +185,7 @@ function StepTemplate({ selected, onSelect, onNext, varMapping, onVarMapping }) 
 
 /* ─── Step 2: Recipients ────────────────────────────────── */
 
-function StepRecipients({ data, onChange, onNext, onBack }) {
+function StepRecipients({ data, onChange, onNext, onBack, segments }) {
   const [tab, setTab] = useState('upload')
   const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState(data.file || null)
@@ -300,7 +299,7 @@ function StepRecipients({ data, onChange, onNext, onBack }) {
             transition={{ duration: 0.18, ease: EASE_OUT }}
             className="space-y-2"
           >
-            {SEGMENTS.map((seg) => (
+            {(segments || []).map((seg) => (
               <button
                 key={seg}
                 onClick={() => { setSegment(seg); setValidated(false) }}
@@ -560,30 +559,84 @@ function DeliveryBar({ value, total, color }) {
 const STEPS = ['Template', 'Recipients', 'Schedule', 'Review']
 
 export default function BulkMessaging() {
-  const [composing, setComposing] = useState(false)
-  const [step, setStep] = useState(0)
-  const [dir, setDir] = useState(1)
-  const [template, setTemplate] = useState(null)
+  const [composing,  setComposing]  = useState(false)
+  const [step,       setStep]       = useState(0)
+  const [dir,        setDir]        = useState(1)
+  const [template,   setTemplate]   = useState(null)
   const [varMapping, setVarMapping] = useState({})
   const [recipients, setRecipients] = useState({})
-  const [schedule, setSchedule] = useState({})
-  const [sent, setSent] = useState(false)
+  const [schedule,   setSchedule]   = useState({})
+  const [sent,       setSent]       = useState(false)
+  const [sentCount,  setSentCount]  = useState(0)
+
+  const [templates,      setTemplates]      = useState([])
+  const [campaigns,      setCampaigns]      = useState([])
+  const [segments,       setSegments]       = useState(['All Contacts'])
+  const [loadingData,    setLoadingData]    = useState(true)
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/api/v1/templates?status=APPROVED&limit=100'),
+      api.get('/api/v1/campaigns?limit=50'),
+      api.get('/api/v1/contacts?limit=1'),
+    ]).then(([tRes, cRes, ctRes]) => {
+      setTemplates((tRes.data.data?.templates || []).map(normalizeBulkTemplate))
+      setCampaigns((cRes.data.data?.campaigns || []).map(normalizeCampaign))
+      const total = ctRes.data.data?.total || 0
+      setSegments([
+        `All Contacts${total ? ` (${total.toLocaleString()})` : ''}`,
+        'Lead',
+        'Customer',
+        'Interested',
+        'Follow-up',
+      ])
+    }).catch(() => {}).finally(() => setLoadingData(false))
+  }, [])
 
   const goNext = () => { setDir(1); setStep((s) => s + 1) }
   const goBack = () => { setDir(-1); setStep((s) => s - 1) }
 
-  const handleSend = () => {
+  const reset = () => { setStep(0); setTemplate(null); setVarMapping({}); setRecipients({}); setSchedule({}) }
+
+  const handleSend = async () => {
+    const campaignName = template?.name
+      ? `${template.name}_${new Date().toISOString().split('T')[0]}`
+      : `campaign_${Date.now()}`
+
+    const recipientsPayload = recipients.segment && !recipients.segment.startsWith('All')
+      ? { type: 'segment', tags: [recipients.segment] }
+      : { type: 'all' }
+
+    try {
+      const { data: cData } = await api.post('/api/v1/campaigns', {
+        name: campaignName,
+        templateId: template?.id,
+        objective: 'promotion',
+        recipients: recipientsPayload,
+        variables: varMapping,
+        schedule: schedule.sendType === 'scheduled' && schedule.schedule ? { scheduledAt: schedule.schedule } : undefined,
+      })
+      const campaignId = cData.data.campaign._id
+      const { data: sData } = await api.post(`/api/v1/campaigns/${campaignId}/send`)
+      setSentCount(sData.data.campaign?.total || 0)
+
+      // Refresh campaigns list
+      api.get('/api/v1/campaigns?limit=50')
+        .then((r) => setCampaigns((r.data.data?.campaigns || []).map(normalizeCampaign)))
+        .catch(() => {})
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send campaign.')
+      return
+    }
+
     setSent(true)
     setComposing(false)
-    setStep(0)
-    setTemplate(null)
-    setRecipients({})
-    setSchedule({})
+    reset()
   }
 
   const stepContent = [
-    <StepTemplate selected={template} onSelect={(t) => { setTemplate(t); setVarMapping({}) }} onNext={goNext} varMapping={varMapping} onVarMapping={setVarMapping} />,
-    <StepRecipients data={recipients} onChange={setRecipients} onNext={goNext} onBack={goBack} />,
+    <StepTemplate selected={template} onSelect={(t) => { setTemplate(t); setVarMapping({}) }} onNext={goNext} varMapping={varMapping} onVarMapping={setVarMapping} templates={templates} />,
+    <StepRecipients data={recipients} onChange={setRecipients} onNext={goNext} onBack={goBack} segments={segments} />,
     <StepSchedule data={schedule} onChange={setSchedule} onNext={goNext} onBack={goBack} />,
     <StepReview template={template} recipients={recipients} schedule={schedule} onBack={goBack} onSend={handleSend} />,
   ]
@@ -613,7 +666,7 @@ export default function BulkMessaging() {
             className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl"
           >
             <CheckCircle2 size={18} className="text-green-600 shrink-0" />
-            <p className="text-sm font-medium text-green-800">Campaign queued successfully! Sending to 1,284 contacts.</p>
+            <p className="text-sm font-medium text-green-800">Campaign queued successfully!{sentCount > 0 ? ` Sending to ${sentCount.toLocaleString()} contacts.` : ''}</p>
             <button onClick={() => setSent(false)} className="ml-auto text-green-500 hover:text-green-700">
               <X size={15} />
             </button>
@@ -686,7 +739,7 @@ export default function BulkMessaging() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <p className="text-sm font-semibold text-gray-900">Recent Campaigns</p>
-          <span className="text-xs text-gray-400">{PAST_CAMPAIGNS.length} campaigns</span>
+          <span className="text-xs text-gray-400">{campaigns.length} campaigns</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -704,7 +757,12 @@ export default function BulkMessaging() {
               </tr>
             </thead>
             <tbody>
-              {PAST_CAMPAIGNS.map((c, i) => (
+              {campaigns.length === 0 && !loadingData && (
+                <tr>
+                  <td colSpan={9} className="px-5 py-10 text-center text-sm text-gray-400">No campaigns yet. Create your first bulk campaign above.</td>
+                </tr>
+              )}
+              {campaigns.map((c, i) => (
                 <motion.tr
                   key={c.id}
                   initial={{ opacity: 0, y: 6 }}

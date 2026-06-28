@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -8,6 +8,7 @@ import {
   FileDown, Clock, Sliders,
 } from 'lucide-react'
 import PageHeader from '../../../components/layout/PageHeader'
+import api from '../../../api/axios'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
 
@@ -24,24 +25,26 @@ const SOURCES    = ['Website', 'Facebook Ad', 'WhatsApp', 'Referral', 'Event', '
 const PRODUCTS   = ['Basic Plan', 'Pro Plan', 'Enterprise', 'Add-on A', 'Add-on B']
 const CITIES     = ['Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai', 'Pune', 'Kolkata']
 
-/* ─── Demo data ─────────────────────────────────────────── */
-
-const SEED = [
-  { id: 1,  name: 'Priya Sharma',    phone: '+91 98765 43210', tags: ['Customer'],             optIn: true,  blocked: false, lastInteraction: '2 min ago',  city: 'Mumbai',    product: 'Pro Plan',    source: 'Website',    notes: 'Ordered twice this month. Prefers morning calls.' },
-  { id: 2,  name: 'Raj Patel',       phone: '+91 87654 32109', tags: ['Lead', 'Interested'],   optIn: true,  blocked: false, lastInteraction: '18 min ago', city: 'Ahmedabad', product: 'Basic Plan',  source: 'Facebook Ad', notes: '' },
-  { id: 3,  name: 'Amit Kumar',      phone: '+91 76543 21098', tags: ['Follow-up'],            optIn: true,  blocked: false, lastInteraction: '1h ago',     city: 'Delhi',     product: 'Add-on A',    source: 'Referral',   notes: 'Needs follow-up every Monday.' },
-  { id: 4,  name: 'Neha Singh',      phone: '+91 65432 10987', tags: ['Customer'],             optIn: false, blocked: false, lastInteraction: '3h ago',     city: 'Bangalore', product: 'Enterprise',  source: 'Event',      notes: '' },
-  { id: 5,  name: 'Vikram Mehta',    phone: '+91 54321 09876', tags: ['Lead'],                 optIn: true,  blocked: false, lastInteraction: 'Yesterday',  city: 'Pune',      product: 'Basic Plan',  source: 'WhatsApp',   notes: 'Interested in bulk pricing.' },
-  { id: 6,  name: 'Sneha Rao',       phone: '+91 43210 98765', tags: ['Interested'],           optIn: true,  blocked: false, lastInteraction: '2 days ago', city: 'Hyderabad', product: 'Pro Plan',    source: 'Website',    notes: '' },
-  { id: 7,  name: 'Arjun Verma',     phone: '+91 32109 87654', tags: ['Customer', 'Follow-up'],optIn: true,  blocked: false, lastInteraction: '3 days ago', city: 'Chennai',   product: 'Enterprise',  source: 'Referral',   notes: 'VIP client — handle with priority.' },
-  { id: 8,  name: 'Kavya Iyer',      phone: '+91 21098 76543', tags: [],                       optIn: false, blocked: true,  lastInteraction: '5 days ago', city: 'Kolkata',   product: '',            source: 'Facebook Ad', notes: 'Requested unsubscribe.' },
-  { id: 9,  name: 'Suresh Nair',     phone: '+91 10987 65432', tags: ['Lead'],                 optIn: true,  blocked: false, lastInteraction: '1 week ago', city: 'Mumbai',    product: 'Add-on B',    source: 'Event',      notes: '' },
-  { id: 10, name: 'Meera Joshi',     phone: '+91 09876 54321', tags: ['Customer'],             optIn: true,  blocked: false, lastInteraction: '2 weeks ago',city: 'Delhi',     product: 'Pro Plan',    source: 'Website',    notes: 'Referred two other customers.' },
-  { id: 11, name: 'Rohit Gupta',     phone: '+91 98765 11111', tags: ['Interested', 'Lead'],   optIn: true,  blocked: false, lastInteraction: '3 weeks ago',city: 'Bangalore', product: 'Basic Plan',  source: 'WhatsApp',   notes: '' },
-  { id: 12, name: 'Pooja Desai',     phone: '+91 87654 22222', tags: ['Follow-up'],            optIn: false, blocked: false, lastInteraction: '1 month ago',city: 'Pune',      product: 'Add-on A',    source: 'Other',      notes: 'Expressed interest in upgrade.' },
-]
-
 /* ─── Helpers ────────────────────────────────────────────── */
+
+function normalizeContact(c) {
+  return {
+    id: c._id || c.id,
+    name: c.name || '',
+    phone: c.phone || '',
+    email: c.email || '',
+    tags: c.tags || [],
+    optIn: c.isOptedIn !== false,
+    blocked: c.status === 'blocked',
+    lastInteraction: c.lastContactDate
+      ? new Date(c.lastContactDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+      : 'Never',
+    city: c.city || '',
+    product: c.product || '',
+    source: c.source || '',
+    notes: c.notes || '',
+  }
+}
 
 function TagChip({ label, onRemove }) {
   return (
@@ -314,7 +317,7 @@ function ImportModal({ onClose, onImport }) {
           <motion.button
             whileTap={{ scale: 0.97 }}
             disabled={!file}
-            onClick={() => { onImport(); onClose() }}
+            onClick={() => { onImport(file); onClose() }}
             className="flex items-center gap-2 px-5 py-2 bg-green-100 text-gray-800 border-2 border-green-400 shadow-sm shadow-green-500 hover:bg-white/45 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
           >
@@ -508,7 +511,8 @@ function FilterPanel({ filters, onChange }) {
 const DEFAULT_FILTERS = { tags: [], campaignActivity: 'Any', lastResponse: 'Any', city: '', source: '' }
 
 export default function Contacts() {
-  const [contacts,   setContacts]   = useState(SEED)
+  const [contacts,   setContacts]   = useState([])
+  const [loading,    setLoading]    = useState(true)
   const [search,     setSearch]     = useState('')
   const [editTarget, setEditTarget] = useState(null)   // null=closed, false=new, obj=editing
   const [notesTarget,setNotesTarget]= useState(null)
@@ -519,6 +523,19 @@ export default function Contacts() {
   const [selected,   setSelected]   = useState([])
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
+
+  const fetchContacts = useCallback(async () => {
+    try {
+      const { data } = await api.get('/api/v1/contacts?limit=200')
+      setContacts((data.data?.contacts || []).map(normalizeContact))
+    } catch {
+      showToast('Failed to load contacts.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchContacts() }, [fetchContacts])
 
   /* Filter logic */
   const filtered = contacts.filter((c) => {
@@ -544,40 +561,99 @@ export default function Contacts() {
     (filters.lastResponse !== 'Any' ? 1 : 0) + (filters.city ? 1 : 0) + (filters.source ? 1 : 0)
 
   /* CRUD */
-  const handleSave = (form) => {
-    if (form.id) {
-      setContacts((cs) => cs.map((c) => (c.id === form.id ? { ...form } : c)))
-      showToast('Contact updated.')
-    } else {
-      setContacts((cs) => [{ ...form, id: Date.now() }, ...cs])
-      showToast('Contact added.')
+  const handleSave = async (form) => {
+    const payload = {
+      name: form.name, phone: form.phone, email: form.email || '',
+      tags: form.tags, notes: form.notes || '', source: form.source || '',
+      isOptedIn: form.optIn, city: form.city || '', product: form.product || '',
+      status: form.blocked ? 'blocked' : (form.optIn ? 'active' : 'opted-out'),
+    }
+    try {
+      if (form.id) {
+        const { data } = await api.put(`/api/v1/contacts/${form.id}`, payload)
+        setContacts((cs) => cs.map((c) => c.id === form.id ? normalizeContact(data.data.contact) : c))
+        showToast('Contact updated.')
+      } else {
+        const { data } = await api.post('/api/v1/contacts', payload)
+        setContacts((cs) => [normalizeContact(data.data.contact), ...cs])
+        showToast('Contact added.')
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to save contact.')
     }
   }
 
-  const handleDelete = (id) => {
-    setContacts((cs) => cs.filter((c) => c.id !== id))
-    showToast('Contact deleted.')
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/api/v1/contacts/${id}`)
+      setContacts((cs) => cs.filter((c) => c.id !== id))
+      showToast('Contact deleted.')
+    } catch {
+      showToast('Failed to delete contact.')
+    }
   }
 
-  const handleToggleBlock = (id) => {
-    setContacts((cs) => cs.map((c) => c.id === id ? { ...c, blocked: !c.blocked } : c))
+  const handleToggleBlock = async (id) => {
     const c = contacts.find((c) => c.id === id)
-    showToast(c?.blocked ? 'Contact unblocked.' : 'Contact blocklisted.')
+    if (!c) return
+    const newStatus = c.blocked ? 'active' : 'blocked'
+    try {
+      await api.put(`/api/v1/contacts/${id}`, { status: newStatus })
+      setContacts((cs) => cs.map((c) => c.id === id ? { ...c, blocked: newStatus === 'blocked' } : c))
+      showToast(c.blocked ? 'Contact unblocked.' : 'Contact blocklisted.')
+    } catch {
+      showToast('Failed to update contact.')
+    }
   }
 
-  const handleSaveNotes = (id, text) => {
-    setContacts((cs) => cs.map((c) => c.id === id ? { ...c, notes: text } : c))
-    showToast('Notes saved.')
+  const handleSaveNotes = async (id, text) => {
+    try {
+      await api.put(`/api/v1/contacts/${id}`, { notes: text })
+      setContacts((cs) => cs.map((c) => c.id === id ? { ...c, notes: text } : c))
+      showToast('Notes saved.')
+    } catch {
+      showToast('Failed to save notes.')
+    }
   }
 
   const toggleSelect = (id) => setSelected((s) => s.includes(id) ? s.filter((i) => i !== id) : [...s, id])
   const toggleAll    = () => setSelected(selected.length === filtered.length ? [] : filtered.map((c) => c.id))
 
-  const handleExport = () => showToast(`Exporting ${filtered.length} contacts as CSV…`)
-  const handleBulkDelete = () => {
-    setContacts((cs) => cs.filter((c) => !selected.includes(c.id)))
-    showToast(`Deleted ${selected.length} contacts.`)
-    setSelected([])
+  const handleExport = async () => {
+    try {
+      const res = await api.get('/api/v1/contacts/export', { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'contacts.csv'; a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      showToast('Export failed.')
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    try {
+      const { data } = await api.delete('/api/v1/contacts/bulk', { data: { ids: selected } })
+      setContacts((cs) => cs.filter((c) => !selected.includes(c.id)))
+      showToast(`Deleted ${data.data?.deleted ?? selected.length} contacts.`)
+      setSelected([])
+    } catch {
+      showToast('Failed to delete contacts.')
+    }
+  }
+
+  const handleImport = async (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    try {
+      const { data } = await api.post('/api/v1/contacts/import', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      showToast(`${data.data?.imported ?? 0} contacts imported.`)
+      fetchContacts()
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Import failed.')
+    }
   }
 
   return (
@@ -808,7 +884,14 @@ export default function Contacts() {
                   </motion.tr>
                 ))}
               </AnimatePresence>
-              {filtered.length === 0 && (
+              {loading && (
+                <tr>
+                  <td colSpan={9} className="px-5 py-12 text-center">
+                    <p className="text-sm text-gray-400">Loading contacts…</p>
+                  </td>
+                </tr>
+              )}
+              {!loading && filtered.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-5 py-12 text-center">
                     <Users size={28} className="mx-auto mb-2 text-gray-200" />
@@ -844,7 +927,7 @@ export default function Contacts() {
           />
         )}
         {showImport && (
-          <ImportModal onClose={() => setShowImport(false)} onImport={() => showToast('Contacts imported successfully.')} />
+          <ImportModal onClose={() => setShowImport(false)} onImport={handleImport} />
         )}
       </AnimatePresence>
     </div>

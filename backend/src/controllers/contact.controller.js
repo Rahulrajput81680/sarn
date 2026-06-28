@@ -30,10 +30,15 @@ const getContacts = asyncHandler(async (req, res) => {
 
 // POST /api/v1/contacts
 const createContact = asyncHandler(async (req, res) => {
-  const { name, phone, email, tags, notes, source } = req.body
+  const { name, phone, email, tags, notes, source, city, product, isOptedIn, status } = req.body
   if (!name || !phone) return res.status(400).json({ success: false, message: 'Name and phone are required' })
 
-  const contact = await Contact.create({ tenant: req.tenantId, name, phone, email, tags, notes, source: source || 'manual' })
+  const contact = await Contact.create({
+    tenant: req.tenantId, name, phone, email, tags, notes,
+    source: source || 'manual', city, product,
+    isOptedIn: isOptedIn !== undefined ? isOptedIn : true,
+    status: status || 'active',
+  })
   await Tenant.findByIdAndUpdate(req.tenantId, { $inc: { 'usage.contacts': 1 } })
   return success(res, { contact }, 'Contact created', 201)
 })

@@ -7,11 +7,9 @@ const contactSchema = new mongoose.Schema(
     phone: { type: String, required: true, trim: true, maxlength: 20 },
     email: { type: String, lowercase: true, trim: true },
     tags: { type: [String], default: [] },
-    source: {
-      type: String,
-      enum: ['manual', 'import', 'api', 'campaign', 'chatbot', 'organic'],
-      default: 'manual',
-    },
+    source: { type: String, default: 'manual' },
+    city: { type: String, trim: true, maxlength: 100 },
+    product: { type: String, trim: true, maxlength: 100 },
     status: {
       type: String,
       enum: ['active', 'blocked', 'opted-out'],

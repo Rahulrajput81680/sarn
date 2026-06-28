@@ -23,6 +23,11 @@ axiosInstance.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
+      try {
+        const raw = localStorage.getItem('wixabotic-auth')
+        const token = raw ? JSON.parse(raw)?.state?.token : null
+        if (token?.startsWith('dev-')) return Promise.reject(err)
+      } catch {}
       localStorage.removeItem('wixabotic-auth')
       window.location.href = '/login'
     } else if (err.response?.status >= 500) {
