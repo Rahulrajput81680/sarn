@@ -43,6 +43,7 @@ function normalizeCampaign(c) {
     delivered: c.stats?.delivered || 0,
     read: c.stats?.read || 0,
     failed: c.stats?.failed || 0,
+    lastError: c.stats?.lastError || null,
     date: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
     status: statusMap[c.status] || c.status,
   }
@@ -614,6 +615,8 @@ export default function BulkMessaging() {
   const [campaigns,      setCampaigns]      = useState([])
   const [segments,       setSegments]       = useState(['All Contacts'])
   const [loadingData,    setLoadingData]    = useState(true)
+  const [refreshing,     setRefreshing]     = useState(false)
+  const [syncing,        setSyncing]        = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -633,6 +636,32 @@ export default function BulkMessaging() {
       ])
     }).catch(() => {}).finally(() => setLoadingData(false))
   }, [])
+
+  const refreshCampaignList = async () => {
+    setRefreshing(true)
+    try {
+      const r = await api.get('/api/v1/campaigns?limit=50')
+      setCampaigns((r.data.data?.campaigns || []).map(normalizeCampaign))
+    } catch {
+      toast.error('Failed to refresh campaigns.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const syncFromMeta = async () => {
+    setSyncing(true)
+    try {
+      const r = await api.post('/api/v1/templates/sync')
+      toast.success(`${r.data.data?.synced || 0} template(s) synced from Meta`)
+      const tRes = await api.get('/api/v1/templates?status=APPROVED&limit=100')
+      setTemplates((tRes.data.data?.templates || []).map(normalizeBulkTemplate))
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Template sync failed')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const goNext = () => { setDir(1); setStep((s) => s + 1) }
   const goBack = () => { setDir(-1); setStep((s) => s - 1) }
@@ -662,15 +691,10 @@ export default function BulkMessaging() {
       setSentCount(sData.data.campaign?.total || 0)
 
       // Immediate refresh to show "Sending" in table
-      const refreshCampaigns = () =>
-        api.get('/api/v1/campaigns?limit=50')
-          .then((r) => setCampaigns((r.data.data?.campaigns || []).map(normalizeCampaign)))
-          .catch(() => {})
-
-      refreshCampaigns()
+      refreshCampaignList()
       // Poll again at 2s and 5s — catches "completed" after background send finishes
-      setTimeout(refreshCampaigns, 2000)
-      setTimeout(refreshCampaigns, 5000)
+      setTimeout(refreshCampaignList, 2000)
+      setTimeout(refreshCampaignList, 5000)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to send campaign.')
       return
@@ -786,7 +810,23 @@ export default function BulkMessaging() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <p className="text-sm font-semibold text-gray-900">Recent Campaigns</p>
-          <span className="text-xs text-gray-400">{campaigns.length} campaigns</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={syncFromMeta}
+              disabled={syncing}
+              title="Import all approved templates from Meta into this account"
+              className="text-xs px-2 py-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-40 transition-colors"
+            >{syncing ? 'Syncing…' : 'Sync Templates'}</button>
+            <button
+              onClick={refreshCampaignList}
+              disabled={refreshing}
+              title="Refresh campaign list"
+              className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-40 transition-colors"
+            >
+              <RotateCcw size={14} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+            <span className="text-xs text-gray-400">{campaigns.length} campaigns</span>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -834,8 +874,12 @@ export default function BulkMessaging() {
                   </td>
                   <td className="px-4 py-3.5">
                     {c.failed > 0 && (
-                      <button title="Retry failed" className="text-gray-400 hover:text-amber-500 transition-colors">
-                        <RotateCcw size={13} />
+                      <button
+                        title={c.lastError || 'Messages failed — click for details'}
+                        onClick={() => toast.error(c.lastError || 'Messages failed. Check that the template is approved by Meta and your token has messaging permissions.', { duration: 8000 })}
+                        className="text-red-400 hover:text-red-600 transition-colors"
+                      >
+                        <AlertTriangle size={13} />
                       </button>
                     )}
                   </td>
