@@ -1,6 +1,7 @@
 const path = require('path')
 const fs = require('fs')
 const User = require('../models/User')
+const Tenant = require('../models/Tenant')
 const asyncHandler = require('../utils/asyncHandler')
 const { success } = require('../utils/apiResponse')
 const { generateApiKey } = require('../utils/generateToken')
@@ -112,8 +113,37 @@ const getTeamMembers = asyncHandler(async (req, res) => {
   return success(res, { users })
 })
 
+// PUT /api/v1/profile/wa-connect  (called during onboarding step 2)
+const connectWhatsApp = asyncHandler(async (req, res) => {
+  const { phoneNumber, displayName, phoneNumberId, wabaId, accessToken } = req.body
+  if (!phoneNumber || !displayName) {
+    return res.status(400).json({ success: false, message: 'Phone number and display name are required' })
+  }
+
+  const update = {
+    'whatsapp.phoneNumber': phoneNumber.trim(),
+    'whatsapp.displayName': displayName.trim(),
+    'whatsapp.status': 'connected',
+  }
+  if (phoneNumberId) update['whatsapp.phoneNumberId'] = phoneNumberId.trim()
+  if (wabaId)        update['whatsapp.wabaId']        = wabaId.trim()
+  if (accessToken)   update['whatsapp.accessToken']   = accessToken.trim()
+
+  const tenant = await Tenant.findByIdAndUpdate(req.user.tenant, update, { new: true })
+    .select('name whatsapp.phoneNumber whatsapp.displayName whatsapp.status')
+
+  return success(res, { tenant }, 'WhatsApp connected successfully')
+})
+
+// POST /api/v1/profile/complete-onboarding
+const completeOnboarding = asyncHandler(async (req, res) => {
+  await User.findByIdAndUpdate(req.user._id, { isOnboarded: true })
+  return success(res, {}, 'Onboarding complete')
+})
+
 module.exports = {
   getProfile, updateProfile, uploadAvatar,
   changePassword, updateNotifications, updateWASettings,
   regenerateApiKey, updateWebhook, getTeamMembers,
+  connectWhatsApp, completeOnboarding,
 }

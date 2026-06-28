@@ -55,7 +55,7 @@ const login = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Email and password are required' })
   }
 
-  const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password').populate('tenant', 'name plan limits usage whatsapp')
+  const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password').populate('tenant', 'name plan limits usage whatsapp isActive')
 
   if (!user || !(await user.matchPassword(password))) {
     return res.status(401).json({ success: false, message: 'Invalid email or password' })
