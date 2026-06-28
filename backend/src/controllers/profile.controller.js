@@ -104,8 +104,16 @@ const updateWebhook = asyncHandler(async (req, res) => {
   return success(res, { webhookUrl: user.webhookUrl, webhookEvents: user.webhookEvents }, 'Webhook settings saved')
 })
 
+// GET /api/v1/profile/team
+const getTeamMembers = asyncHandler(async (req, res) => {
+  const users = await User.find({ tenant: req.user.tenant, isActive: true })
+    .select('name email role avatar')
+    .lean()
+  return success(res, { users })
+})
+
 module.exports = {
   getProfile, updateProfile, uploadAvatar,
   changePassword, updateNotifications, updateWASettings,
-  regenerateApiKey, updateWebhook,
+  regenerateApiKey, updateWebhook, getTeamMembers,
 }

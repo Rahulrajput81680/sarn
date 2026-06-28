@@ -1,166 +1,113 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   CheckCircle2, XCircle, Clock, AlertTriangle, Search,
-  Filter, Eye, ChevronRight, X, Save, History,
-  LayoutTemplate, ShieldCheck, Variable, AlignLeft,
+  Filter, Eye, ChevronRight, X, RefreshCw,
+  LayoutTemplate, Variable, AlignLeft,
   Tag, MessageSquare, Phone, ExternalLink, Hash,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import Badge from '../../../components/ui/Badge'
 import PageHeader from '../../../components/layout/PageHeader'
+import api from '../../../api/axios'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
 
-/* ─── Template data ──────────────────────────────────────── */
+const AVATAR_COLORS = ['bg-purple-500','bg-blue-500','bg-pink-500','bg-orange-500','bg-indigo-500','bg-green-500','bg-cyan-500','bg-teal-500','bg-red-500','bg-amber-500']
+const MEDIA_TYPES   = ['IMAGE', 'VIDEO', 'DOCUMENT']
 
-const TEMPLATES = [
-  {
-    id: 1,  client: 'Flipkart Commerce', avatar: 'FC', color: 'bg-purple-500',
-    name: 'order_shipped_update', category: 'UTILITY', language: 'en',
-    header: { type: 'TEXT', text: 'Order Update' },
-    body: 'Hi {{1}}, your order #{{2}} has been shipped! Estimated delivery: {{3}}. Track your package anytime.',
-    footer: 'Reply STOP to unsubscribe',
-    buttons: [{ type: 'URL', text: 'Track Order', url: 'https://flipkart.com/track' }],
-    submittedBy: 'raj@flipkart.com', submittedOn: 'Jun 14, 2026 · 10:42 AM',
-    status: 'pending',
-  },
-  {
-    id: 2,  client: 'StyleHub', avatar: 'SH', color: 'bg-pink-500',
-    name: 'summer_sale_promo', category: 'MARKETING', language: 'en',
-    header: { type: 'IMAGE', text: '' },
-    body: 'Hey {{1}}! 🎉 Our Summer Sale is LIVE! Get up to 50% OFF on all fashion. Shop now and save big. Limited time offer — ends {{2}}!',
-    footer: 'Reply STOP to opt out',
-    buttons: [{ type: 'URL', text: 'Shop Now', url: 'https://stylehub.co/sale' }, { type: 'QUICK_REPLY', text: 'Remind me later' }],
-    submittedBy: 'hello@stylehub.co', submittedOn: 'Jun 13, 2026 · 03:15 PM',
-    status: 'pending',
-  },
-  {
-    id: 3,  client: 'MediCare Plus', avatar: 'MP', color: 'bg-red-500',
-    name: 'otp_login_verify', category: 'AUTHENTICATION', language: 'en',
-    header: { type: 'TEXT', text: 'Verification Code' },
-    body: 'Your MediCare Plus login OTP is {{1}}. Valid for 10 minutes. Do not share this code with anyone.',
-    footer: '',
-    buttons: [{ type: 'OTP', text: 'Copy Code' }],
-    submittedBy: 'admin@medicareplus.in', submittedOn: 'Jun 13, 2026 · 11:08 AM',
-    status: 'pending',
-  },
-  {
-    id: 4,  client: 'FoodZone', avatar: 'FZ', color: 'bg-orange-500',
-    name: 'delivery_status_update', category: 'UTILITY', language: 'en',
-    header: { type: 'TEXT', text: 'Delivery Update' },
-    body: 'Hi {{1}}! Your FoodZone order is on the way. Rider {{2}} will deliver to {{3}} in approx {{4}} mins. Enjoy your meal!',
-    footer: '',
-    buttons: [{ type: 'CALL', text: 'Call Rider', phone: '+91XXXXXXXXXX' }],
-    submittedBy: 'ops@foodzone.in', submittedOn: 'Jun 12, 2026 · 08:50 AM',
-    status: 'pending',
-  },
-  {
-    id: 5,  client: 'QuickMart', avatar: 'QM', color: 'bg-blue-500',
-    name: 'payment_receipt', category: 'UTILITY', language: 'hi',
-    header: { type: 'TEXT', text: 'Payment Confirmed' },
-    body: 'नमस्ते {{1}}, आपका ₹{{2}} का भुगतान सफलतापूर्वक प्राप्त हो गया है। Order ID: {{3}}. धन्यवाद!',
-    footer: 'QuickMart India',
-    buttons: [],
-    submittedBy: 'info@quickmart.in', submittedOn: 'Jun 11, 2026 · 05:30 PM',
-    status: 'pending',
-  },
-  {
-    id: 6,  client: 'TechStart', avatar: 'TS', color: 'bg-indigo-500',
-    name: 'welcome_onboard', category: 'UTILITY', language: 'en',
-    header: { type: 'TEXT', text: 'Welcome to TechStart' },
-    body: 'Hi {{1}}! Welcome to TechStart. Your account is ready. Get started with your dashboard using the link below and explore all features available to you.',
-    footer: 'TechStart Team',
-    buttons: [{ type: 'URL', text: 'Go to Dashboard', url: 'https://app.techstart.io' }],
-    submittedBy: 'ceo@techstart.io', submittedOn: 'Jun 11, 2026 · 09:20 AM',
-    status: 'approved', decidedOn: 'Jun 11, 2026 · 11:45 AM', decidedBy: 'Admin',
-  },
-  {
-    id: 7,  client: 'RapidDeliver', avatar: 'RD', color: 'bg-cyan-500',
-    name: 'marketing_blast_v2', category: 'MARKETING', language: 'en',
-    header: { type: 'TEXT', text: 'Big Offer Inside!' },
-    body: 'CLICK NOW to claim your FREE delivery voucher!!! Limited slots. Don\'t miss out — offer expires in {{1}} hours. Share with friends!!',
-    footer: '',
-    buttons: [{ type: 'URL', text: 'Claim Now', url: 'https://rapiddeliver.com/offer' }],
-    submittedBy: 'vp@rapiddeliver.com', submittedOn: 'Jun 10, 2026 · 02:00 PM',
-    status: 'rejected', rejectionReason: 'CONTENT_VIOLATION', rejectionNote: 'Excessive urgency language and excessive exclamation marks violates Meta messaging policies. Use a calm, informative tone.',
-    decidedOn: 'Jun 10, 2026 · 04:30 PM', decidedBy: 'Admin',
-  },
-  {
-    id: 8,  client: 'UrbanRoots', avatar: 'UR', color: 'bg-lime-600',
-    name: 'subscription_renewal', category: 'UTILITY', language: 'en',
-    header: { type: 'TEXT', text: 'Subscription Renewal' },
-    body: 'Dear {{1}}, your UrbanRoots subscription renews on {{2}}. Amount: ₹{{3}}. Auto-pay is enabled on your card ending {{4}}.',
-    footer: 'Manage subscription at urbanroots.in',
-    buttons: [{ type: 'URL', text: 'Manage Plan', url: 'https://urbanroots.in/plan' }],
-    submittedBy: 'sonal@urbanroots.in', submittedOn: 'Jun 9, 2026 · 07:15 PM',
-    status: 'approved', decidedOn: 'Jun 10, 2026 · 09:00 AM', decidedBy: 'Admin',
-  },
-  {
-    id: 9,  client: 'BrandCraft', avatar: 'BC', color: 'bg-amber-500',
-    name: 'support_ticket_update', category: 'UTILITY', language: 'en',
-    header: { type: 'TEXT', text: 'Support Update' },
-    body: 'Hi {{1}}, ticket #{{2}} status changed to "{{3}}". Our team will contact you by {{4}}. For urgent help call us directly.',
-    footer: 'BrandCraft Support',
-    buttons: [{ type: 'CALL', text: 'Call Support', phone: '+91XXXXXXXXXX' }, { type: 'URL', text: 'View Ticket', url: 'https://brandcraft.co/ticket' }],
-    submittedBy: 'hello@brandcraft.co', submittedOn: 'Jun 8, 2026 · 01:40 PM',
-    status: 'rejected', rejectionReason: 'TAG_CONTENT_MISMATCH', rejectionNote: 'Template body contains "call us" which is a service interaction. Reclassify as SERVICE category or remove the call instruction.',
-    decidedOn: 'Jun 9, 2026 · 10:00 AM', decidedBy: 'Admin',
-  },
-]
+/* ─── Normalize backend template to UI format ────────────── */
+
+function initials(name = '') {
+  const w = name.trim().split(/\s+/)
+  return w.length >= 2 ? (w[0][0] + w[1][0]).toUpperCase() : name.slice(0, 2).toUpperCase()
+}
+
+function normalizeTemplate(t, index) {
+  const headerComp  = t.components?.find((c) => c.type === 'HEADER')
+  const bodyComp    = t.components?.find((c) => c.type === 'BODY')
+  const footerComp  = t.components?.find((c) => c.type === 'FOOTER')
+  const buttonsComp = t.components?.find((c) => c.type === 'BUTTONS')
+  const isMedia     = headerComp && MEDIA_TYPES.includes(headerComp.text)
+  const tenantName  = t.tenant?.name || 'Unknown'
+
+  return {
+    id:             t._id,
+    client:         tenantName,
+    avatar:         initials(tenantName),
+    color:          AVATAR_COLORS[index % AVATAR_COLORS.length],
+    name:           t.name,
+    category:       t.category,
+    language:       t.language || 'en',
+    header:         headerComp
+                      ? { type: isMedia ? headerComp.text : 'TEXT', text: isMedia ? '' : (headerComp.text || '') }
+                      : null,
+    body:           bodyComp?.text || '',
+    footer:         footerComp?.text || '',
+    buttons:        (buttonsComp?.buttons || []).map((b) => ({ type: b.type, text: b.text, url: b.url, phone: b.phoneNumber })),
+    status:         t.status.toLowerCase(),
+    rejectionReason:t.rejectionReason || '',
+    rejectionNote:  t.rejectionNote   || '',
+    submittedBy:    tenantName,
+    submittedOn:    new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    decidedOn:      (t.status !== 'DRAFT' && t.updatedAt)
+                      ? new Date(t.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : '',
+    decidedBy:      'Admin',
+  }
+}
 
 /* ─── Validation logic ───────────────────────────────────── */
 
 function validateTemplate(t) {
-  const vars = t.body.match(/\{\{(\d+)\}\}/g) || []
-  const nums = vars.map((v) => parseInt(v.replace(/\D/g, ''))).sort((a, b) => a - b)
-  const sequential = nums.length === 0 || nums.every((n, i) => n === i + 1)
-  const malformed  = /\{[^{]|[^}]\}|\{\{[^0-9]/.test(t.body)
-
-  const VALID_CATS  = ['UTILITY', 'MARKETING', 'AUTHENTICATION', 'SERVICE']
-  const promoWords  = /\b(free|win|winner|click now|limited|guaranteed|make money|earn \$)\b/i
+  const vars        = t.body.match(/\{\{(\d+)\}\}/g) || []
+  const nums        = vars.map((v) => parseInt(v.replace(/\D/g, ''))).sort((a, b) => a - b)
+  const sequential  = nums.length === 0 || nums.every((n, i) => n === i + 1)
+  const malformed   = /\{[^{]|[^}]\}|\{\{[^0-9]/.test(t.body)
   const excessivePunct = /[!?]{2,}|[A-Z]{5,}/.test(t.body)
+  const VALID_CATS  = ['UTILITY', 'MARKETING', 'AUTHENTICATION', 'SERVICE']
 
   return {
-    categoryValid:     VALID_CATS.includes(t.category),
-    variablesCorrect:  sequential && !malformed,
-    bodyLength:        t.body.length <= 1024,
-    noProhibited:      !excessivePunct && !(t.category === 'AUTHENTICATION' && promoWords.test(t.body)),
+    categoryValid:    VALID_CATS.includes(t.category),
+    variablesCorrect: sequential && !malformed,
+    bodyLength:       t.body.length <= 1024,
+    noProhibited:     !excessivePunct,
   }
 }
 
-/* ─── Rejection reasons (Meta standard) ─────────────────── */
+/* ─── Rejection reasons ──────────────────────────────────── */
 
 const REJECTION_REASONS = [
-  { key: 'TAG_CONTENT_MISMATCH',    label: 'Category mismatch',         desc: 'Template content does not match the selected category' },
-  { key: 'INVALID_FORMAT',          label: 'Invalid variable format',    desc: 'Variables must use {{1}}, {{2}}... sequential format' },
-  { key: 'CONTENT_VIOLATION',       label: 'Content policy violation',   desc: 'Excessive urgency, all-caps, or prohibited language' },
-  { key: 'PROMOTIONAL_IN_UTILITY',  label: 'Promo content in Utility',   desc: 'Utility templates cannot contain promotional messaging' },
-  { key: 'INCOMPLETE_VARIABLES',    label: 'Non-sequential variables',   desc: 'Variable numbers must start at 1 and be sequential' },
-  { key: 'MISSING_OPT_OUT',         label: 'Missing opt-out for Marketing', desc: 'Marketing templates must include an unsubscribe option' },
-  { key: 'CUSTOM',                  label: 'Custom reason',              desc: 'Provide a specific reason below' },
+  { key: 'TAG_CONTENT_MISMATCH',   label: 'Category mismatch',          desc: 'Template content does not match the selected category' },
+  { key: 'INVALID_FORMAT',         label: 'Invalid variable format',     desc: 'Variables must use {{1}}, {{2}}... sequential format' },
+  { key: 'CONTENT_VIOLATION',      label: 'Content policy violation',    desc: 'Excessive urgency, all-caps, or prohibited language' },
+  { key: 'PROMOTIONAL_IN_UTILITY', label: 'Promo content in Utility',    desc: 'Utility templates cannot contain promotional messaging' },
+  { key: 'INCOMPLETE_VARIABLES',   label: 'Non-sequential variables',    desc: 'Variable numbers must start at 1 and be sequential' },
+  { key: 'MISSING_OPT_OUT',        label: 'Missing opt-out for Marketing', desc: 'Marketing templates must include an unsubscribe option' },
+  { key: 'CUSTOM',                 label: 'Custom reason',               desc: 'Provide a specific reason below' },
 ]
 
 /* ─── Colors ─────────────────────────────────────────────── */
 
-const catColor = { UTILITY: 'blue', MARKETING: 'purple', AUTHENTICATION: 'green', SERVICE: 'gray' }
-const statusColor = { pending: 'yellow', approved: 'green', rejected: 'red' }
+const catColor    = { UTILITY: 'blue', MARKETING: 'purple', AUTHENTICATION: 'green', SERVICE: 'gray' }
+const statusColor = { pending: 'yellow', approved: 'green', rejected: 'red', draft: 'gray' }
 
 const statusIcon = {
-  pending:  <Clock size={13} className="text-amber-500" />,
+  pending:  <Clock        size={13} className="text-amber-500" />,
   approved: <CheckCircle2 size={13} className="text-green-500" />,
-  rejected: <XCircle size={13} className="text-red-500" />,
+  rejected: <XCircle      size={13} className="text-red-500"   />,
+  draft:    <AlignLeft    size={13} className="text-gray-400"  />,
 }
 
 function highlightVars(text) {
-  const parts = text.split(/(\{\{\d+\}\})/g)
-  return parts.map((p, i) =>
+  return text.split(/(\{\{\d+\}\})/g).map((p, i) =>
     /^\{\{\d+\}\}$/.test(p)
       ? <span key={i} className="bg-blue-100 text-blue-700 font-mono text-xs px-1 rounded">{p}</span>
       : p
   )
 }
 
-/* ─── Validation checklist component ────────────────────── */
+/* ─── Validation checklist ───────────────────────────────── */
 
 function ValidationChecklist({ v }) {
   const items = [
@@ -176,10 +123,7 @@ function ValidationChecklist({ v }) {
       <div className="space-y-1.5">
         {items.map(({ label, pass }) => (
           <div key={label} className="flex items-center gap-2">
-            {pass
-              ? <CheckCircle2 size={13} className="text-green-500 shrink-0" />
-              : <XCircle     size={13} className="text-red-500 shrink-0" />
-            }
+            {pass ? <CheckCircle2 size={13} className="text-green-500 shrink-0" /> : <XCircle size={13} className="text-red-500 shrink-0" />}
             <span className={`text-xs ${pass ? 'text-gray-700' : 'text-red-700 font-medium'}`}>{label}</span>
           </div>
         ))}
@@ -190,10 +134,9 @@ function ValidationChecklist({ v }) {
 
 /* ─── Reject modal ───────────────────────────────────────── */
 
-function RejectModal({ template, onClose, onConfirm }) {
+function RejectModal({ template, onClose, onConfirm, loading }) {
   const [reason, setReason] = useState('')
-  const [note, setNote]     = useState('')
-
+  const [note,   setNote]   = useState('')
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <motion.div
@@ -215,13 +158,9 @@ function RejectModal({ template, onClose, onConfirm }) {
         </div>
 
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Rejection Reason</p>
-        <div className="space-y-1.5 mb-4">
+        <div className="space-y-1.5 mb-4 max-h-56 overflow-y-auto">
           {REJECTION_REASONS.map(({ key, label, desc }) => (
-            <button
-              key={key}
-              onClick={() => setReason(key)}
-              className={`w-full text-left px-3.5 py-2.5 rounded-xl border-2 transition-all ${reason === key ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-gray-300'}`}
-            >
+            <button key={key} onClick={() => setReason(key)} className={`w-full text-left px-3.5 py-2.5 rounded-xl border-2 transition-all ${reason === key ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-gray-300'}`}>
               <p className={`text-xs font-semibold ${reason === key ? 'text-red-800' : 'text-gray-700'}`}>{label}</p>
               <p className="text-[11px] text-gray-400 mt-0.5">{desc}</p>
             </button>
@@ -229,7 +168,7 @@ function RejectModal({ template, onClose, onConfirm }) {
         </div>
 
         <div className="mb-5">
-          <label className="block text-xs font-semibold text-gray-500 mb-1.5">Additional note to client <span className="text-gray-400 font-normal">(sent with rejection)</span></label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">Note to client <span className="text-gray-400 font-normal">(optional)</span></label>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -242,11 +181,11 @@ function RejectModal({ template, onClose, onConfirm }) {
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
           <button
-            disabled={!reason}
+            disabled={!reason || loading}
             onClick={() => reason && onConfirm(reason, note)}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors ${!reason ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 text-white'}`}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors ${!reason || loading ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 text-white'}`}
           >
-            <XCircle size={14} /> Send Rejection
+            <XCircle size={14} /> {loading ? 'Rejecting…' : 'Send Rejection'}
           </button>
         </div>
       </motion.div>
@@ -256,8 +195,8 @@ function RejectModal({ template, onClose, onConfirm }) {
 
 /* ─── Template review drawer ─────────────────────────────── */
 
-function ReviewDrawer({ template, onClose, onApprove, onReject }) {
-  const v = validateTemplate(template)
+function ReviewDrawer({ template, onClose, onApprove, onReject, actionLoading }) {
+  const v      = validateTemplate(template)
   const allPass = Object.values(v).every(Boolean)
   const buttonIcon = { URL: <ExternalLink size={11} />, CALL: <Phone size={11} />, QUICK_REPLY: <MessageSquare size={11} />, OTP: <Hash size={11} /> }
 
@@ -271,7 +210,6 @@ function ReviewDrawer({ template, onClose, onApprove, onReject }) {
         transition={{ duration: 0.28, ease: EASE_OUT }}
         className="relative w-full max-w-lg bg-white h-full overflow-y-auto shadow-2xl flex flex-col"
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
           <div className="flex items-center gap-2.5">
             <div className={`w-8 h-8 rounded-xl ${template.color} flex items-center justify-center`}>
@@ -298,7 +236,7 @@ function ReviewDrawer({ template, onClose, onApprove, onReject }) {
             </div>
             <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
               <p className="text-gray-400 mb-0.5">Submitted</p>
-              <p className="font-medium text-gray-700 leading-tight">{template.submittedBy.split('@')[0]}</p>
+              <p className="font-medium text-gray-700 leading-tight">{template.submittedOn}</p>
             </div>
           </div>
 
@@ -313,9 +251,17 @@ function ReviewDrawer({ template, onClose, onApprove, onReject }) {
                 {template.header?.type === 'IMAGE' && (
                   <div className="h-28 bg-gradient-to-br from-gray-200 to-gray-300 rounded-xl flex items-center justify-center text-gray-400 text-xs">📷 Image header</div>
                 )}
-                <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
-                  {highlightVars(template.body)}
-                </p>
+                {template.header?.type === 'VIDEO' && (
+                  <div className="h-28 bg-gradient-to-br from-gray-200 to-gray-300 rounded-xl flex items-center justify-center text-gray-400 text-xs">🎥 Video header</div>
+                )}
+                {template.header?.type === 'DOCUMENT' && (
+                  <div className="h-16 bg-gradient-to-br from-gray-200 to-gray-300 rounded-xl flex items-center justify-center text-gray-400 text-xs">📄 Document</div>
+                )}
+                {template.body ? (
+                  <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">{highlightVars(template.body)}</p>
+                ) : (
+                  <p className="text-gray-300 text-sm italic">No body text</p>
+                )}
                 {template.footer && (
                   <p className="text-[11px] text-gray-400 border-t border-gray-100 pt-1.5">{template.footer}</p>
                 )}
@@ -339,49 +285,43 @@ function ReviewDrawer({ template, onClose, onApprove, onReject }) {
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Variable Check</p>
               <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100">
                 <div className="flex flex-wrap gap-2">
-                  {(template.body.match(/\{\{\d+\}\}/g) || [])
-                    .filter((v, i, a) => a.indexOf(v) === i)
-                    .sort()
-                    .map((v) => (
-                      <div key={v} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1">
-                        <Variable size={11} className="text-blue-500" />
-                        <code className="text-xs font-mono font-semibold text-blue-700">{v}</code>
-                        <CheckCircle2 size={11} className="text-green-500" />
-                      </div>
-                    ))
-                  }
+                  {[...new Set(template.body.match(/\{\{\d+\}\}/g) || [])].sort().map((v) => (
+                    <div key={v} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1">
+                      <Variable size={11} className="text-blue-500" />
+                      <code className="text-xs font-mono font-semibold text-blue-700">{v}</code>
+                      <CheckCircle2 size={11} className="text-green-500" />
+                    </div>
+                  ))}
                 </div>
                 <p className="text-[11px] text-gray-400 mt-2">
-                  {(template.body.match(/\{\{\d+\}\}/g) || []).filter((v, i, a) => a.indexOf(v) === i).length} unique variable{(template.body.match(/\{\{\d+\}\}/g) || []).filter((v, i, a) => a.indexOf(v) === i).length !== 1 ? 's' : ''} · body length {template.body.length}/1024 chars
+                  {[...new Set(template.body.match(/\{\{\d+\}\}/g) || [])].length} unique variable{[...new Set(template.body.match(/\{\{\d+\}\}/g) || [])].length !== 1 ? 's' : ''} · {template.body.length}/1024 chars
                 </p>
               </div>
             </div>
           )}
 
-          {/* Validation */}
           <ValidationChecklist v={v} />
 
-          {/* Rejection info if already rejected */}
+          {/* Rejection info */}
           {template.status === 'rejected' && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4">
               <p className="text-xs font-semibold text-red-700 mb-1">Previously Rejected</p>
-              <p className="text-xs text-red-600">{REJECTION_REASONS.find((r) => r.key === template.rejectionReason)?.label || template.rejectionReason}</p>
+              <p className="text-xs text-red-600">{REJECTION_REASONS.find((r) => r.key === template.rejectionReason)?.label || template.rejectionReason || 'Unknown reason'}</p>
               {template.rejectionNote && <p className="text-xs text-red-500 mt-1.5 italic">"{template.rejectionNote}"</p>}
-              <p className="text-[10px] text-red-400 mt-2">{template.decidedOn} · by {template.decidedBy}</p>
+              {template.decidedOn && <p className="text-[10px] text-red-400 mt-2">{template.decidedOn} · by {template.decidedBy}</p>}
             </div>
           )}
-
           {template.status === 'approved' && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4">
               <p className="text-xs font-semibold text-green-700 mb-1">Approved</p>
-              <p className="text-[10px] text-green-500">{template.decidedOn} · by {template.decidedBy}</p>
+              {template.decidedOn && <p className="text-[10px] text-green-500">{template.decidedOn} · by {template.decidedBy}</p>}
             </div>
           )}
         </div>
 
-        {/* Action footer — only for pending */}
+        {/* Action footer — pending only */}
         {template.status === 'pending' && (
-          <div className="sticky bottom-0 bg-white border-t border-gray-100 p-4 flex gap-2">
+          <div className="sticky bottom-0 bg-white border-t border-gray-100 p-4">
             {!allPass && (
               <div className="w-full flex gap-2 items-start text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-2">
                 <AlertTriangle size={13} className="text-amber-500 shrink-0 mt-0.5" />
@@ -391,15 +331,17 @@ function ReviewDrawer({ template, onClose, onApprove, onReject }) {
             <div className="flex gap-2 w-full">
               <button
                 onClick={onReject}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-red-300 bg-red-50 text-red-700 text-sm font-semibold hover:bg-red-100 transition-colors"
+                disabled={actionLoading}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-red-300 bg-red-50 text-red-700 text-sm font-semibold hover:bg-red-100 transition-colors disabled:opacity-50"
               >
                 <XCircle size={14} /> Reject
               </button>
               <button
                 onClick={onApprove}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-100 text-gray-800 border-2 border-green-400 shadow-sm shadow-green-500 hover:bg-white/45 text-sm font-semibold transition-all"
+                disabled={actionLoading}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-100 text-gray-800 border-2 border-green-400 shadow-sm shadow-green-500 hover:bg-white/45 text-sm font-semibold transition-all disabled:opacity-50"
               >
-                <CheckCircle2 size={14} /> Approve
+                <CheckCircle2 size={14} /> {actionLoading ? 'Approving…' : 'Approve'}
               </button>
             </div>
           </div>
@@ -412,7 +354,7 @@ function ReviewDrawer({ template, onClose, onApprove, onReject }) {
 /* ─── Template row card ──────────────────────────────────── */
 
 function TemplateRow({ template, onSelect, onQuickApprove, onQuickReject, index }) {
-  const v = validateTemplate(template)
+  const v        = validateTemplate(template)
   const failCount = Object.values(v).filter((x) => !x).length
 
   return (
@@ -423,12 +365,9 @@ function TemplateRow({ template, onSelect, onQuickApprove, onQuickReject, index 
       className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all"
     >
       <div className="flex items-start gap-3 p-4">
-        {/* Avatar */}
         <div className={`w-9 h-9 rounded-xl ${template.color} flex items-center justify-center shrink-0 mt-0.5`}>
           <span className="text-white text-xs font-bold">{template.avatar}</span>
         </div>
-
-        {/* Main info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -437,35 +376,25 @@ function TemplateRow({ template, onSelect, onQuickApprove, onQuickReject, index 
                 <Badge color={catColor[template.category]}>{template.category}</Badge>
                 <span className="text-xs text-gray-400 uppercase">{template.language}</span>
               </div>
-              <p className="text-xs text-gray-500 mt-0.5">{template.client} · {template.submittedBy}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{template.client} · {template.submittedOn}</p>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               {statusIcon[template.status]}
               <Badge color={statusColor[template.status]}>{template.status}</Badge>
             </div>
           </div>
+          <p className="text-xs text-gray-600 mt-2 line-clamp-2 leading-relaxed">{template.body || <span className="italic text-gray-300">No body</span>}</p>
 
-          {/* Body preview */}
-          <p className="text-xs text-gray-600 mt-2 line-clamp-2 leading-relaxed">
-            {template.body}
-          </p>
-
-          {/* Validation issues */}
           {template.status === 'pending' && failCount > 0 && (
             <div className="flex items-center gap-1.5 mt-2">
               <AlertTriangle size={11} className="text-red-500 shrink-0" />
               <span className="text-xs text-red-600 font-medium">{failCount} validation issue{failCount > 1 ? 's' : ''} detected</span>
             </div>
           )}
-
-          {/* Rejection note */}
           {template.status === 'rejected' && template.rejectionNote && (
-            <div className="mt-2 text-xs text-red-500 italic line-clamp-1">
-              "{template.rejectionNote}"
-            </div>
+            <div className="mt-2 text-xs text-red-500 italic line-clamp-1">"{template.rejectionNote}"</div>
           )}
 
-          {/* Footer row */}
           <div className="flex items-center justify-between mt-3">
             <span className="text-xs text-gray-400">{template.submittedOn}</span>
             <div className="flex items-center gap-1.5">
@@ -509,18 +438,35 @@ const TABS = [
 ]
 
 export default function TemplateApproval() {
-  const [templates, setTemplates] = useState(TEMPLATES)
-  const [tab, setTab]             = useState('pending')
-  const [search, setSearch]       = useState('')
-  const [catFilter, setCatFilter] = useState('all')
-  const [selected, setSelected]   = useState(null)
+  const [templates,    setTemplates]    = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [actionLoading,setActionLoading]= useState(false)
+  const [tab,          setTab]          = useState('pending')
+  const [search,       setSearch]       = useState('')
+  const [catFilter,    setCatFilter]    = useState('all')
+  const [selected,     setSelected]     = useState(null)
   const [rejectTarget, setRejectTarget] = useState(null)
+
+  const fetchTemplates = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await api.get('/api/v1/admin/templates?limit=100')
+      const raw = res.data.data.templates || []
+      setTemplates(raw.map((t, i) => normalizeTemplate(t, i)))
+    } catch {
+      toast.error('Failed to load templates')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchTemplates() }, [fetchTemplates])
 
   const filtered = useMemo(() => templates.filter((t) => {
     const matchTab = tab === 'all' || t.status === tab
-    const q = search.toLowerCase()
-    const matchQ = !q || t.name.includes(q) || t.client.toLowerCase().includes(q)
-    const matchC = catFilter === 'all' || t.category === catFilter
+    const q        = search.toLowerCase()
+    const matchQ   = !q || t.name.includes(q) || t.client.toLowerCase().includes(q)
+    const matchC   = catFilter === 'all' || t.category === catFilter
     return matchTab && matchQ && matchC
   }), [templates, tab, search, catFilter])
 
@@ -530,20 +476,35 @@ export default function TemplateApproval() {
     rejected: templates.filter((t) => t.status === 'rejected').length,
   }
 
-  const handleApprove = (id) => {
-    setTemplates((prev) => prev.map((t) =>
-      t.id === id ? { ...t, status: 'approved', decidedOn: 'Jun 15, 2026 · Now', decidedBy: 'Admin' } : t
-    ))
-    if (selected?.id === id) setSelected((s) => ({ ...s, status: 'approved', decidedOn: 'Jun 15, 2026 · Now', decidedBy: 'Admin' }))
+  const handleApprove = async (id) => {
+    setActionLoading(true)
+    try {
+      await api.patch(`/api/v1/admin/templates/${id}/review`, { action: 'approve' })
+      toast.success('Template approved')
+      setTemplates((prev) => prev.map((t) => t.id === id ? { ...t, status: 'approved', decidedOn: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) } : t))
+      if (selected?.id === id) setSelected((s) => ({ ...s, status: 'approved' }))
+    } catch {
+      toast.error('Failed to approve template')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
-  const handleReject = (reason, note) => {
+  const handleReject = async (reason, note) => {
+    if (!rejectTarget) return
     const id = rejectTarget.id
-    setTemplates((prev) => prev.map((t) =>
-      t.id === id ? { ...t, status: 'rejected', rejectionReason: reason, rejectionNote: note, decidedOn: 'Jun 15, 2026 · Now', decidedBy: 'Admin' } : t
-    ))
-    if (selected?.id === id) setSelected((s) => ({ ...s, status: 'rejected', rejectionReason: reason, rejectionNote: note }))
-    setRejectTarget(null)
+    setActionLoading(true)
+    try {
+      await api.patch(`/api/v1/admin/templates/${id}/review`, { action: 'reject', reason, note })
+      toast.success('Template rejected')
+      setTemplates((prev) => prev.map((t) => t.id === id ? { ...t, status: 'rejected', rejectionReason: reason, rejectionNote: note, decidedOn: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) } : t))
+      if (selected?.id === id) setSelected((s) => ({ ...s, status: 'rejected', rejectionReason: reason, rejectionNote: note }))
+      setRejectTarget(null)
+    } catch {
+      toast.error('Failed to reject template')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   return (
@@ -552,6 +513,11 @@ export default function TemplateApproval() {
         title="Template Approval"
         description="Review, validate and approve Meta WhatsApp message templates"
         breadcrumbs={['Admin', 'Meta Integration', 'Template Approval']}
+        action={
+          <button onClick={fetchTemplates} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        }
       />
 
       {/* KPI summary */}
@@ -564,7 +530,7 @@ export default function TemplateApproval() {
           <div key={label} className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${color}`}>
             <Icon size={18} className={text} />
             <div>
-              <p className={`text-2xl font-bold ${text}`}>{count}</p>
+              <p className={`text-2xl font-bold ${text}`}>{loading ? '—' : count}</p>
               <p className={`text-xs font-medium ${text} opacity-70`}>{label}</p>
             </div>
           </div>
@@ -614,7 +580,13 @@ export default function TemplateApproval() {
       </div>
 
       {/* Template list */}
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-28 bg-white border border-gray-100 rounded-xl animate-pulse" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col items-center py-14 text-gray-300">
           <LayoutTemplate size={36} className="mb-3" />
           <p className="text-sm text-gray-400">No templates in this view</p>
@@ -642,8 +614,9 @@ export default function TemplateApproval() {
           <ReviewDrawer
             template={selected}
             onClose={() => setSelected(null)}
-            onApprove={() => { handleApprove(selected.id); setSelected(null) }}
+            onApprove={() => handleApprove(selected.id)}
             onReject={() => setRejectTarget(selected)}
+            actionLoading={actionLoading}
           />
         )}
       </AnimatePresence>
@@ -655,6 +628,7 @@ export default function TemplateApproval() {
             template={rejectTarget}
             onClose={() => setRejectTarget(null)}
             onConfirm={handleReject}
+            loading={actionLoading}
           />
         )}
       </AnimatePresence>

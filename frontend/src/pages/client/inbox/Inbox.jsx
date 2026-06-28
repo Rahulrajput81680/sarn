@@ -4,7 +4,7 @@ import {
   Search, CheckCheck, Check, Send, StickyNote,
   Lock, Paperclip, Zap, ChevronRight, User,
   Tag, UserPlus, CheckCircle2, RefreshCw, X,
-  Image, FileText, MoreVertical, Phone, Circle,
+  FileText, MoreVertical, Phone, Circle,
   Smile, AtSign, ChevronDown, Clock, AlertTriangle,
   LayoutTemplate,
 } from 'lucide-react'
@@ -16,12 +16,18 @@ const EASE_OUT = [0.23, 1, 0.32, 1]
 
 /* ─── Constants ─────────────────────────────────────────── */
 
-const TEAM = [
-  { id: 't1', name: 'Rahul Sharma',  initials: 'RS', color: 'bg-blue-500' },
-  { id: 't2', name: 'Sneha Kapoor',  initials: 'SK', color: 'bg-purple-500' },
-  { id: 't3', name: 'Dev Kumar',     initials: 'DK', color: 'bg-amber-500' },
-  { id: 't4', name: 'Priti Nair',    initials: 'PN', color: 'bg-pink-500' },
-]
+const TEAM_COLORS = ['bg-blue-500', 'bg-purple-500', 'bg-amber-500', 'bg-pink-500', 'bg-red-500', 'bg-green-500', 'bg-cyan-500']
+
+const normalizeTeamMember = (u, i) => {
+  const words    = (u.name || u.email || 'U').split(' ')
+  const initials = words.map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  return {
+    id:       u._id,
+    name:     u.name || u.email,
+    initials,
+    color:    TEAM_COLORS[i % TEAM_COLORS.length],
+  }
+}
 
 const LABELS = [
   { key: 'support',   label: 'Support',   color: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -39,61 +45,6 @@ const CANNED = [
   { id: 'c5', shortcut: '/wait',    text: 'Thank you for your patience! We are working on this.' },
   { id: 'c6', shortcut: '/callback',text: 'Would you like us to arrange a callback? Please share your preferred time.' },
 ]
-
-const ATTACHMENTS = [
-  { id: 'a1', name: 'invoice_june.pdf', type: 'pdf',   size: '84 KB',  time: '10:32 AM' },
-  { id: 'a2', name: 'screenshot.png',   type: 'image', size: '240 KB', time: 'Yesterday' },
-  { id: 'a3', name: 'warranty.pdf',     type: 'pdf',   size: '120 KB', time: '2 days ago' },
-]
-
-/* ─── Demo data ─────────────────────────────────────────── */
-
-const CONVERSATIONS = [
-  { id: 1, name: 'Priya Sharma',  phone: '+91 98765 43210', status: 'open',     unread: 3,  assignee: 't1', labels: ['vip', 'sales'],      lastMsg: 'Is my order still on the way?',   time: '2m',  avatar: 'PS', color: 'bg-green-500',  window: { open: true,  expiresIn: '23h 52m' } },
-  { id: 2, name: 'Raj Patel',     phone: '+91 87654 32109', status: 'open',     unread: 0,  assignee: null, labels: ['support'],            lastMsg: 'Thanks for the quick response!',  time: '18m', avatar: 'RP', color: 'bg-blue-500',   window: { open: true,  expiresIn: '23h 42m' } },
-  { id: 3, name: 'Amit Kumar',    phone: '+91 76543 21098', status: 'open',     unread: 1,  assignee: null, labels: ['technical'],          lastMsg: 'I need help with my account',     time: '1h',  avatar: 'AK', color: 'bg-purple-500', window: { open: true,  expiresIn: '23h' } },
-  { id: 4, name: 'Neha Singh',    phone: '+91 65432 10987', status: 'resolved', unread: 0,  assignee: 't2', labels: ['support'],            lastMsg: 'When will my refund arrive?',     time: '3h',  avatar: 'NS', color: 'bg-pink-500',   window: { open: false, expiresIn: null } },
-  { id: 5, name: 'Vikram Mehta',  phone: '+91 54321 09876', status: 'open',     unread: 0,  assignee: 't3', labels: ['sales', 'follow-up'], lastMsg: 'Interested in bulk pricing',      time: '1d',  avatar: 'VM', color: 'bg-amber-500',  window: { open: false, expiresIn: null } },
-  { id: 6, name: 'Sneha Rao',     phone: '+91 43210 98765', status: 'resolved', unread: 0,  assignee: 't1', labels: ['vip'],                lastMsg: 'Perfect, thank you so much!',    time: '2d',  avatar: 'SR', color: 'bg-red-500',    window: { open: false, expiresIn: null } },
-]
-
-const MSG_MAP = {
-  1: [
-    { id: 1, type: 'customer', text: 'Hi, I placed an order 3 days ago but haven\'t received any update.', time: '10:02 AM', status: 'read' },
-    { id: 2, type: 'agent',    text: 'Hello Priya! Let me check on that right away.', time: '10:03 AM', status: 'read', agent: 't1' },
-    { id: 3, type: 'note',     text: 'Check with logistics — order #ORD-4821 may have been delayed at the courier hub.', time: '10:04 AM', agent: 't1' },
-    { id: 4, type: 'customer', text: 'It shows out for delivery since yesterday but nothing arrived.', time: '10:08 AM', status: 'read' },
-    { id: 5, type: 'agent',    text: 'I can see the order is with our courier partner. I\'ve escalated this for same-day delivery. You\'ll receive a confirmation SMS shortly.', time: '10:11 AM', status: 'delivered', agent: 't1' },
-    { id: 6, type: 'customer', text: 'Is my order still on the way?', time: '10:24 AM', status: 'delivered' },
-  ],
-  2: [
-    { id: 1, type: 'customer', text: 'I need help resetting my password.', time: '9:10 AM', status: 'read' },
-    { id: 2, type: 'agent',    text: 'Sure! I\'ve sent a reset link to your registered email.', time: '9:12 AM', status: 'read', agent: 't2' },
-    { id: 3, type: 'customer', text: 'Got it, thank you!', time: '9:18 AM', status: 'read' },
-    { id: 4, type: 'customer', text: 'Thanks for the quick response!', time: '9:20 AM', status: 'read' },
-  ],
-  3: [
-    { id: 1, type: 'customer', text: 'I need help with my account — I can\'t login.', time: '8:45 AM', status: 'read' },
-    { id: 2, type: 'note',     text: 'Unassigned — pick this up ASAP. Account may be locked.', time: '8:46 AM', agent: 't3' },
-  ],
-  4: [
-    { id: 1, type: 'customer', text: 'I returned the product last week, when will my refund arrive?', time: 'Yesterday', status: 'read' },
-    { id: 2, type: 'agent',    text: 'Hi Neha! Refunds typically take 5-7 business days. Yours was initiated on June 6th.', time: 'Yesterday', status: 'read', agent: 't2' },
-    { id: 3, type: 'customer', text: 'When will my refund arrive?', time: 'Yesterday', status: 'read' },
-    { id: 4, type: 'agent',    text: 'It should reflect by June 13th. I\'ve flagged your case for priority processing!', time: 'Yesterday', status: 'read', agent: 't2' },
-  ],
-  5: [
-    { id: 1, type: 'customer', text: 'Hi, I\'m interested in bulk pricing for 500+ units.', time: '2 days ago', status: 'read' },
-    { id: 2, type: 'agent',    text: 'That\'s great! I\'ve passed your inquiry to our sales team. They\'ll reach out within 24 hours.', time: '2 days ago', status: 'read', agent: 't3' },
-    { id: 3, type: 'customer', text: 'Interested in bulk pricing', time: '1 day ago', status: 'read' },
-  ],
-  6: [
-    { id: 1, type: 'customer', text: 'My discount code isn\'t working at checkout.', time: '3 days ago', status: 'read' },
-    { id: 2, type: 'agent',    text: 'Let me check that code for you!', time: '3 days ago', status: 'read', agent: 't1' },
-    { id: 3, type: 'agent',    text: 'The code SAVE20 is now active on your account. Try again!', time: '3 days ago', status: 'read', agent: 't1' },
-    { id: 4, type: 'customer', text: 'Perfect, thank you so much!', time: '3 days ago', status: 'read' },
-  ],
-}
 
 /* ─── Helpers ────────────────────────────────────────────── */
 
@@ -114,8 +65,8 @@ function LabelChip({ labelKey }) {
 
 /* ─── Conversation list item ─────────────────────────────── */
 
-function ConvItem({ c, active, onClick }) {
-  const assignee = TEAM.find((t) => t.id === c.assignee)
+function ConvItem({ c, active, onClick, team }) {
+  const assignee = team.find((t) => t.id === c.assignee)
   return (
     <motion.button
       whileTap={{ scale: 0.985 }}
@@ -173,8 +124,8 @@ function ConvItem({ c, active, onClick }) {
 
 /* ─── Message bubble ─────────────────────────────────────── */
 
-function MsgBubble({ msg }) {
-  const agentMember = TEAM.find((t) => t.id === msg.agent)
+function MsgBubble({ msg, team }) {
+  const agentMember = team ? team.find((t) => t.id === msg.agent) : null
 
   if (msg.type === 'note') {
     return (
@@ -274,7 +225,7 @@ function QuickReplies({ onSelect, onClose }) {
 
 /* ─── Assign dropdown ────────────────────────────────────── */
 
-function AssignDropdown({ current, onAssign, onClose }) {
+function AssignDropdown({ current, onAssign, onClose, team }) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95, y: -4 }}
@@ -289,7 +240,7 @@ function AssignDropdown({ current, onAssign, onClose }) {
       >
         <Circle size={13} className="text-gray-300" /> Unassigned
       </button>
-      {TEAM.map((m) => (
+      {team.map((m) => (
         <button
           key={m.id}
           onClick={() => { onAssign(m.id); onClose() }}
@@ -302,6 +253,9 @@ function AssignDropdown({ current, onAssign, onClose }) {
           {current === m.id && <Check size={12} className="ml-auto text-green-600" />}
         </button>
       ))}
+      {team.length === 0 && (
+        <p className="px-3 py-2 text-xs text-gray-400 text-center">No team members found</p>
+      )}
     </motion.div>
   )
 }
@@ -333,7 +287,7 @@ function LabelPicker({ active, onToggle, onClose }) {
 
 /* ─── Profile panel ─────────────────────────────────────── */
 
-function ProfilePanel({ conv, assignee, onAssign, onToggleLabel }) {
+function ProfilePanel({ conv, assignee, onAssign, onToggleLabel, team }) {
   const [tab, setTab] = useState('info')
   const [showAssign, setShowAssign] = useState(false)
   const [showLabels, setShowLabels] = useState(false)
@@ -388,7 +342,7 @@ function ProfilePanel({ conv, assignee, onAssign, onToggleLabel }) {
                 {showAssign && (
                   <>
                     <div className="fixed inset-0 z-20" onClick={() => setShowAssign(false)} />
-                    <AssignDropdown current={conv.assignee} onAssign={onAssign} onClose={() => setShowAssign(false)} />
+                    <AssignDropdown current={conv.assignee} onAssign={onAssign} onClose={() => setShowAssign(false)} team={team} />
                   </>
                 )}
               </AnimatePresence>
@@ -441,23 +395,10 @@ function ProfilePanel({ conv, assignee, onAssign, onToggleLabel }) {
         {tab === 'attachments' && (
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Shared Files</p>
-            {ATTACHMENTS.map((a) => (
-              <motion.div
-                key={a.id}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.16, ease: EASE_OUT }}
-                className="flex items-center gap-2.5 p-2.5 bg-gray-50 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors cursor-pointer"
-              >
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${a.type === 'image' ? 'bg-blue-100' : 'bg-red-100'}`}>
-                  {a.type === 'image' ? <Image size={14} className="text-blue-500" /> : <FileText size={14} className="text-red-500" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-800 truncate">{a.name}</p>
-                  <p className="text-xs text-gray-400">{a.size} · {a.time}</p>
-                </div>
-              </motion.div>
-            ))}
+            <div className="flex flex-col items-center justify-center py-6 text-gray-300">
+              <FileText size={24} className="mb-2" />
+              <p className="text-xs">No files shared yet</p>
+            </div>
           </div>
         )}
       </div>
@@ -514,6 +455,7 @@ export default function Inbox() {
   const { user } = useAuthStore()
   const [convs,       setConvs]       = useState([])
   const [messages,    setMessages]    = useState({})
+  const [team,        setTeam]        = useState([])
   const [activeId,    setActiveId]    = useState(null)
   const [search,      setSearch]      = useState('')
   const [filterTab,   setFilterTab]   = useState('all')
@@ -527,9 +469,18 @@ export default function Inbox() {
   const [sending,     setSending]     = useState(false)
   const msgEndRef = useRef(null)
 
-  const conv = convs.find((c) => c.id === activeId)
-  const msgs = messages[activeId] || []
-  const assignee = TEAM.find((t) => t.id === conv?.assignee)
+  const conv     = convs.find((c) => c.id === activeId)
+  const msgs     = messages[activeId] || []
+  const assignee = team.find((t) => t.id === conv?.assignee)
+
+  // ── Fetch team members ───────────────────────────────────
+  useEffect(() => {
+    axiosInstance.get('/api/v1/profile/team')
+      .then(({ data }) => {
+        setTeam((data.data?.users || []).map(normalizeTeamMember))
+      })
+      .catch(() => {})
+  }, [])
 
   // ── Fetch conversations ──────────────────────────────────
   const fetchConvs = useCallback(async () => {
@@ -539,9 +490,7 @@ export default function Inbox() {
       setConvs(normalized)
       if (normalized.length && !activeId) setActiveId(normalized[0].id)
     } catch {
-      // fallback to demo data when backend is offline
-      setConvs(CONVERSATIONS)
-      setActiveId(CONVERSATIONS[0]?.id)
+      setConvs([])
     } finally {
       setLoading(false)
     }
@@ -557,7 +506,7 @@ export default function Inbox() {
         setMessages(m => ({ ...m, [activeId]: (data.data?.messages || []).map(normalizeMsg) }))
       })
       .catch(() => {
-        setMessages(m => ({ ...m, [activeId]: MSG_MAP[activeId] || [] }))
+        setMessages(m => ({ ...m, [activeId]: [] }))
       })
   }, [activeId])
 
@@ -614,8 +563,8 @@ export default function Inbox() {
     try {
       await axiosInstance.post(`/api/v1/conversations/${activeId}/messages`, { text, type })
     } catch {
-      // Optimistic fallback — show locally
-      const newMsg = { id: Date.now(), type, text, time: 'just now', status: 'sent', agent: 't1' }
+      // Optimistic local update so the UI doesn't stall
+      const newMsg = { id: Date.now(), type, text, time: 'just now', status: 'sent', agent: user?._id || user?.id || null }
       setMessages(m => ({ ...m, [activeId]: [...(m[activeId] || []), newMsg] }))
       setConvs(cs => cs.map(c => c.id === activeId ? { ...c, lastMsg: text } : c))
     } finally {
@@ -702,6 +651,7 @@ export default function Inbox() {
               <ConvItem
                 c={c}
                 active={c.id === activeId}
+                team={team}
                 onClick={() => {
                   setActiveId(c.id)
                   setConvs((cs) => cs.map((x) => x.id === c.id ? { ...x, unread: 0 } : x))
@@ -748,7 +698,7 @@ export default function Inbox() {
                     {showAssignHeader && (
                       <>
                         <div className="fixed inset-0 z-20" onClick={() => setShowAssignHeader(false)} />
-                        <AssignDropdown current={conv.assignee} onAssign={handleAssign} onClose={() => setShowAssignHeader(false)} />
+                        <AssignDropdown current={conv.assignee} onAssign={handleAssign} onClose={() => setShowAssignHeader(false)} team={team} />
                       </>
                     )}
                   </AnimatePresence>
@@ -803,7 +753,7 @@ export default function Inbox() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 bg-gray-50">
-              {msgs.map((msg) => <MsgBubble key={msg.id} msg={msg} />)}
+              {msgs.map((msg) => <MsgBubble key={msg.id} msg={msg} team={team} />)}
               <div ref={msgEndRef} />
             </div>
 
@@ -927,6 +877,7 @@ export default function Inbox() {
               assignee={assignee}
               onAssign={handleAssign}
               onToggleLabel={handleToggleLabel}
+              team={team}
             />
           </motion.div>
         )}

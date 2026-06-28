@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, Send, Megaphone, Users, MessageSquare,
-  Bot, BarChart3, FileText, UserCog, CreditCard,
+  LayoutDashboard, Send, Users, MessageSquare,
   Bell, Search, LogOut, PanelLeftClose, PanelLeftOpen, Wifi, WifiOff, MoreVertical, Phone,
   UserCircle, Settings,
 } from 'lucide-react'
@@ -12,16 +11,10 @@ import useUIStore from '../store/uiStore'
 import OnboardingWizard from '../components/onboarding/OnboardingWizard'
 
 const NAV = [
-  { label: 'Dashboard',       icon: LayoutDashboard, to: '/dashboard' },
-  { label: 'Messages',        icon: MessageSquare,   to: '/inbox' },
-  { label: 'Bulk Messaging',  icon: Send,            to: '/bulk-messaging' },
-  // { label: 'Campaigns',    icon: Megaphone,       to: '/campaigns' },
-  { label: 'Contacts',        icon: Users,           to: '/contacts' },
-  // { label: 'Chatbot',      icon: Bot,             to: '/chatbot' },
-  // { label: 'Analytics',    icon: BarChart3,       to: '/analytics' },
-  { label: 'Templates',       icon: FileText,        to: '/templates' },
-  // { label: 'Team & Access',icon: UserCog,         to: '/team' },
-  // { label: 'Billing',      icon: CreditCard,      to: '/billing' },
+  { label: 'Dashboard',      icon: LayoutDashboard, to: '/dashboard' },
+  { label: 'Messages',       icon: MessageSquare,   to: '/inbox' },
+  { label: 'Contacts',       icon: Users,           to: '/contacts' },
+  { label: 'Bulk Messaging', icon: Send,            to: '/bulk-messaging' },
 ]
 
 const NAV_BOTTOM = [
@@ -36,7 +29,8 @@ export default function DashboardLayout() {
   const { sidebarOpen, toggleSidebar } = useUIStore()
   const navigate = useNavigate()
   const location = useLocation()
-  const waConnected = true
+  const waPhone     = user?.tenant?.whatsapp?.phoneNumber || ''
+  const waConnected = !!waPhone
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const profileRef = useRef(null)
 
@@ -98,18 +92,21 @@ export default function DashboardLayout() {
                 {user?.name || 'My Business'}
               </p>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-xs">🇮🇳</span>
-                <span className="text-xs text-gray-500 font-mono tracking-tight">+91 98765 43210</span>
+                <span className="text-xs font-mono tracking-tight text-gray-500 truncate">
+                  {waPhone || 'No number connected'}
+                </span>
               </div>
               <div className="flex items-center gap-1.5 mt-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
-                <span className="text-[10px] font-medium text-green-600">Connected · WhatsApp Business</span>
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${waConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
+                <span className={`text-[10px] font-medium ${waConnected ? 'text-green-600' : 'text-gray-400'}`}>
+                  {waConnected ? 'Connected · WhatsApp Business' : 'Not connected'}
+                </span>
               </div>
             </div>
           ) : (
             <div
               className="flex items-center justify-center p-2 bg-white/70 border border-green-100 rounded-xl shadow-sm"
-              title="+91 98765 43210 · Connected"
+              title={waPhone ? `${waPhone} · Connected` : 'WhatsApp not connected'}
             >
               <Phone size={14} className="text-green-600" />
             </div>

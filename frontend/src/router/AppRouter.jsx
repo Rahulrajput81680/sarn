@@ -105,27 +105,40 @@ export default function AppRouter() {
             </RoleRoute>
           }
         >
+          {/* Core */}
           <Route path="/admin" element={<AdminDashboard />} />
+
+          {/* Client panel — managed from admin (reuse client page components) */}
+          <Route path="/admin/inbox" element={<Inbox />} />
+          <Route path="/admin/bulk-messaging" element={<BulkMessaging />} />
+          <Route path="/admin/contacts" element={<Contacts />} />
+          <Route path="/admin/meta/templates" element={<TemplateApproval />} />
+          <Route path="/admin/profile" element={<Profile />} />
+          <Route path="/admin/settings" element={<Settings />} />
+
+          {/* Client management */}
           <Route path="/admin/users" element={<UserList />} />
           <Route path="/admin/users/:id" element={<UserDetail />} />
           <Route path="/admin/tenants" element={<TenantList />} />
           <Route path="/admin/tenants/new" element={<CreateTenant />} />
           <Route path="/admin/tenants/:id" element={<TenantDetail />} />
+
+          {/* Monitoring */}
+          <Route path="/admin/webhook-logs" element={<WebhookLogs />} />
+          <Route path="/admin/system-health" element={<SystemHealth />} />
+          <Route path="/admin/analytics" element={<PlatformOverview />} />
+
+          {/* Kept for deep access if needed */}
           <Route path="/admin/plans" element={<Plans />} />
           <Route path="/admin/subscriptions" element={<SubscriptionList />} />
           <Route path="/admin/api-usage" element={<APIMonitor />} />
-          <Route path="/admin/webhook-logs" element={<WebhookLogs />} />
           <Route path="/admin/rate-limits" element={<RateLimits />} />
           <Route path="/admin/moderation" element={<FlaggedMessages />} />
           <Route path="/admin/moderation/rules" element={<ModerationRules />} />
-          <Route path="/admin/analytics" element={<PlatformOverview />} />
           <Route path="/admin/analytics/tenants" element={<TenantAnalytics />} />
-          <Route path="/admin/system-health" element={<SystemHealth />} />
           <Route path="/admin/billing" element={<BillingOverview />} />
           <Route path="/admin/billing/invoices" element={<InvoiceList />} />
           <Route path="/admin/billing/config" element={<PaymentConfig />} />
-          <Route path="/admin/announcements" element={<Announcements />} />
-          <Route path="/admin/email-templates" element={<EmailTemplates />} />
           <Route path="/admin/audit-log" element={<AuditLog />} />
           <Route path="/admin/sessions" element={<SessionManager />} />
           <Route path="/admin/security" element={<SecuritySettings />} />
@@ -137,8 +150,9 @@ export default function AppRouter() {
           <Route path="/admin/escalation" element={<EscalationConfig />} />
           <Route path="/admin/meta" element={<MetaConfig />} />
           <Route path="/admin/meta/numbers" element={<PhoneNumbers />} />
-          <Route path="/admin/meta/templates" element={<TemplateApproval />} />
           <Route path="/admin/role-permissions" element={<RolePermissions />} />
+          <Route path="/admin/announcements" element={<Announcements />} />
+          <Route path="/admin/email-templates" element={<EmailTemplates />} />
         </Route>
 
         <Route path="/" element={<Navigate to="/login" replace />} />

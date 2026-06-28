@@ -31,6 +31,7 @@ const templateSchema = new mongoose.Schema(
     components: { type: [componentSchema], default: [] },
     metaTemplateId: { type: String, default: null }, // Set when Meta approves it
     rejectionReason: { type: String, default: null },
+    rejectionNote:   { type: String, default: null },
     usageCount: { type: Number, default: 0 },
   },
   { timestamps: true }
