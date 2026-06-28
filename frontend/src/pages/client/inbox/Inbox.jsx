@@ -6,7 +6,7 @@ import {
   Tag, UserPlus, CheckCircle2, RefreshCw, X,
   FileText, MoreVertical, Phone, Circle,
   Smile, AtSign, ChevronDown, Clock, AlertTriangle,
-  LayoutTemplate,
+  LayoutTemplate, ArrowLeft,
 } from 'lucide-react'
 import axiosInstance from '../../../api/axios'
 import socket, { connectSocket, disconnectSocket } from '../../../api/socket'
@@ -467,6 +467,7 @@ export default function Inbox() {
   const [showLabelHeader,  setShowLabelHeader]  = useState(false)
   const [loading,     setLoading]     = useState(true)
   const [sending,     setSending]     = useState(false)
+  const [showList,    setShowList]    = useState(true)
   const msgEndRef = useRef(null)
 
   const conv     = convs.find((c) => c.id === activeId)
@@ -528,11 +529,20 @@ export default function Inbox() {
     })
 
     socket.on('new_conversation_message', ({ conversationId }) => {
-      fetchConvs()
+      // Refresh conversations on new message without overwriting optimistic local state
+      axiosInstance.get('/api/v1/conversations', { params: { filter: filterTab } })
+        .then(({ data }) => {
+          const fresh = (data.data?.conversations || []).map(normalizeConv)
+          setConvs(cs => cs.map(c => {
+            const updated = fresh.find(f => f.id === c.id)
+            return updated ? { ...c, ...updated, labels: c.labels } : c
+          }))
+        })
+        .catch(() => {})
     })
 
     socket.on('conversation_updated', ({ conversation }) => {
-      setConvs(cs => cs.map(c => c.id === conversation._id ? { ...c, ...normalizeConv(conversation) } : c))
+      setConvs(cs => cs.map(c => c.id === conversation._id ? { ...c, ...normalizeConv(conversation), labels: conversation.labels || c.labels } : c))
     })
 
     return () => {
@@ -587,12 +597,12 @@ export default function Inbox() {
   }
 
   const handleToggleLabel = async (labelKey) => {
-    let newLabels
-    setConvs(cs => cs.map(c => {
-      if (c.id !== activeId) return c
-      newLabels = c.labels.includes(labelKey) ? c.labels.filter(l => l !== labelKey) : [...c.labels, labelKey]
-      return { ...c, labels: newLabels }
-    }))
+    const conv = convs.find(c => c.id === activeId)
+    if (!conv) return
+    const newLabels = conv.labels.includes(labelKey)
+      ? conv.labels.filter(l => l !== labelKey)
+      : [...conv.labels, labelKey]
+    setConvs(cs => cs.map(c => c.id === activeId ? { ...c, labels: newLabels } : c))
     try {
       await axiosInstance.patch(`/api/v1/conversations/${activeId}`, { labels: newLabels })
     } catch {}
@@ -606,7 +616,7 @@ export default function Inbox() {
       style={{ height: 'calc(100vh - 7.5rem)' }}
     >
       {/* ── Left: conversation list ── */}
-      <div className="w-72 flex flex-col border-r border-gray-100 shrink-0">
+      <div className={`w-full md:w-72 flex flex-col border-r border-gray-100 shrink-0 ${!showList && conv ? 'hidden md:flex' : ''}`}>
         {/* Search */}
         <div className="p-3 border-b border-gray-100">
           <div className="relative">
@@ -653,6 +663,7 @@ export default function Inbox() {
                 team={team}
                 onClick={() => {
                   setActiveId(c.id)
+                  setShowList(false)
                   setConvs((cs) => cs.map((x) => x.id === c.id ? { ...x, unread: 0 } : x))
                 }}
               />
@@ -666,7 +677,14 @@ export default function Inbox() {
         {conv ? (
           <>
             {/* Chat header */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white shrink-0">
+            <div className="flex items-center gap-2 md:gap-3 px-2 md:px-4 py-3 border-b border-gray-100 bg-white shrink-0">
+              {/* Mobile back button */}
+              <button
+                onClick={() => { setActiveId(null); setShowList(true) }}
+                className="md:hidden p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 shrink-0"
+              >
+                <ArrowLeft size={18} />
+              </button>
               <Avatar initials={conv.avatar} color={conv.color} size="md" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -681,7 +699,7 @@ export default function Inbox() {
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
                 {/* Assign */}
                 <div className="relative">
                   <motion.button
@@ -751,7 +769,7 @@ export default function Inbox() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 bg-gray-50">
+            <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-3 bg-gray-50">
               {msgs.map((msg) => <MsgBubble key={msg.id} msg={msg} team={team} />)}
               <div ref={msgEndRef} />
             </div>
@@ -862,22 +880,53 @@ export default function Inbox() {
       </div>
 
       {/* ── Right: profile panel ── */}
+      {/* Desktop: side panel */}
+      <div className="hidden lg:block">
+        <AnimatePresence>
+          {showProfile && conv && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 256, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.24, ease: EASE_OUT }}
+              className="overflow-hidden"
+            >
+              <ProfilePanel
+                conv={conv}
+                assignee={assignee}
+                onAssign={handleAssign}
+                onToggleLabel={handleToggleLabel}
+                team={team}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+      {/* Mobile: profile overlay */}
       <AnimatePresence>
         {showProfile && conv && (
           <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 256, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.24, ease: EASE_OUT }}
-            className="overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 lg:hidden"
           >
-            <ProfilePanel
-              conv={conv}
-              assignee={assignee}
-              onAssign={handleAssign}
-              onToggleLabel={handleToggleLabel}
-              team={team}
-            />
+            <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowProfile(false)} />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ duration: 0.24, ease: EASE_OUT }}
+              className="absolute right-0 top-0 bottom-0 w-72 bg-white shadow-2xl"
+            >
+              <ProfilePanel
+                conv={conv}
+                assignee={assignee}
+                onAssign={handleAssign}
+                onToggleLabel={handleToggleLabel}
+                team={team}
+              />
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

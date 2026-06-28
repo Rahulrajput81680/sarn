@@ -659,13 +659,13 @@ export default function Contacts() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
         <PageHeader title="Contacts" description="Manage your contact lists and segments" />
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={handleExport}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 bg-white transition-colors"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 bg-white transition-colors"
             style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
           >
             <Download size={14} /> Export
@@ -673,7 +673,7 @@ export default function Contacts() {
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 bg-white transition-colors"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 bg-white transition-colors"
             style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
           >
             <Upload size={14} /> Import
@@ -681,7 +681,7 @@ export default function Contacts() {
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => setEditTarget(false)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-green-100 text-gray-800 border-2 border-green-400 shadow-sm shadow-green-500 hover:bg-white/45 text-sm font-medium rounded-lg"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 bg-green-100 text-gray-800 border-2 border-green-400 shadow-sm shadow-green-500 hover:bg-white/45 text-sm font-medium rounded-lg"
             style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
           >
             <Plus size={14} /> Add Contact

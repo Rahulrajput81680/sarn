@@ -112,8 +112,10 @@ const sendCampaign = asyncHandler(async (req, res) => {
         }
 
         await Contact.findByIdAndUpdate(contact._id, { lastContactDate: new Date(), $inc: { messageCount: 1 } })
-      } catch {
+      } catch (err) {
         failed++
+        const metaError = err.response?.data?.error || err.message || 'Unknown error'
+        console.error(`[Campaign] Failed to send to ${contact.phone}:`, JSON.stringify(metaError))
       }
       await new Promise(r => setTimeout(r, 50))
     }

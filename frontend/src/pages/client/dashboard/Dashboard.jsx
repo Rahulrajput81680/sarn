@@ -153,7 +153,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       <PageHeader title="Dashboard" description="Your WhatsApp automation overview" />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
         <SimpleKPI index={0} loading={loading} title="Total Contacts"        value={(stats?.totalContacts ?? 0).toLocaleString()} delta="+this month" deltaType="positive" icon={Users} />
         <SimpleKPI index={1} loading={loading} title="Campaigns Sent"        value={(stats?.totalCampaigns ?? 0).toLocaleString()} delta="all time"    deltaType="positive" icon={Megaphone} />
         <SimpleKPI index={2} loading={loading} title="Replies Received"      value={(stats?.totalReplies ?? 0).toLocaleString()}  delta="all time"    deltaType="positive" icon={MessageSquare} />
@@ -211,10 +211,9 @@ export default function Dashboard() {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <p className="text-sm font-semibold text-gray-700 mb-4">Quick Actions</p>
           <div className="space-y-2">
-            <Button className="w-full justify-start" variant="secondary" onClick={() => navigate('/campaigns')}>📣 New Campaign</Button>
-            <Button className="w-full justify-start" variant="secondary" onClick={() => navigate('/chatbot')}>🤖 Chatbot Flows</Button>
-            <Button className="w-full justify-start" variant="secondary" onClick={() => navigate('/contacts')}>👥 View Contacts</Button>
-            <Button className="w-full justify-start" variant="secondary" onClick={() => navigate('/analytics')}>📊 Analytics</Button>
+            <Button className="w-full justify-start text-left" variant="secondary" onClick={() => navigate('/contacts')}>View Contacts</Button>
+            <Button className="w-full justify-start text-left" variant="secondary" onClick={() => navigate('/bulk-messaging')}>Bulk Messaging</Button>
+            <Button className="w-full justify-start text-left" variant="secondary" onClick={() => navigate('/inbox')}>Open Inbox</Button>
           </div>
         </div>
       </div>

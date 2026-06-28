@@ -4,7 +4,7 @@ import {
   Shield, Bell, Smartphone, Zap, Lock, AlertTriangle,
   Eye, EyeOff, Copy, RefreshCw, Check, LogOut, Trash2,
   Clock, MessageSquare, Key, Webhook, Monitor, Globe,
-  ChevronDown, ChevronUp, Mail, Phone,
+  ChevronDown, ChevronUp,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { toast } from 'sonner'
@@ -726,16 +726,16 @@ export default function Settings() {
     <div className="space-y-5">
       <PageHeader title="Settings" description="Manage your account, notifications, and integrations" />
 
-      <div className="flex gap-6">
-        {/* Vertical tab sidebar */}
-        <nav className="w-44 shrink-0 flex flex-col gap-0.5">
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Tab navigation - horizontal scroll on mobile, vertical sidebar on desktop */}
+        <nav className="flex lg:flex-col gap-1 overflow-x-auto pb-2 lg:pb-0 lg:w-44 shrink-0">
           {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={clsx(
-                'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium text-left transition-all',
-                tab.id === 'danger' && 'mt-4',
+                'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium text-left transition-all whitespace-nowrap shrink-0',
+                tab.id === 'danger' && 'lg:mt-4',
                 activeTab === tab.id
                   ? tab.id === 'danger'
                     ? 'bg-red-50 text-red-700 border border-red-100'
