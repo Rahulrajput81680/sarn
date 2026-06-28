@@ -11,7 +11,7 @@ import { ROLES } from '../../constants/roles'
 
 const schema = z.object({
   email: z.string().email('Invalid email'),
-  password: z.string().min(6, 'Min 6 characters'),
+  password: z.string().min(8, 'Min 8 characters'),
   remember: z.boolean().optional(),
 })
 
@@ -33,16 +33,17 @@ export default function Login() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
   })
-  const { setAuth, logout } = useAuthStore()
+  const { setAuth } = useAuthStore()
   const navigate = useNavigate()
   const [showPw, setShowPw] = useState(false)
 
   const onSubmit = async (data) => {
     try {
       const res = await axiosInstance.post('/api/v1/auth/login', data)
-      setAuth(res.data.user, res.data.token)
+      const { user, token } = res.data.data
+      setAuth(user, token)
       toast.success('Welcome back!')
-      if (res.data.user.role === ROLES.SUPER_ADMIN) {
+      if (user.role === ROLES.SUPER_ADMIN) {
         navigate('/admin')
       } else {
         navigate('/dashboard')
@@ -176,31 +177,6 @@ export default function Login() {
               </Link>
             </p>
 
-            {/* Dev shortcuts */}
-            <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-              <p className="text-xs text-gray-400 mb-2 font-medium">Quick access (dev)</p>
-              <div className="flex gap-2">
-                {/* <button
-                  onClick={() => {
-                    setAuth({ name: 'Super Admin', email: 'admin@SarnConnect.com', role: 'super_admin' }, 'dev-token')
-                    navigate('/admin')
-                  }}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 font-medium"
-                >
-                  Admin Panel
-                </button> */}
-                <button
-                  onClick={() => {
-                    logout()
-                    setAuth({ name: 'Demo User', email: 'user@SarnConnect.com', role: 'admin' }, 'dev-token-user')
-                    navigate('/dashboard')
-                  }}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 font-medium"
-                >
-                  Client Panel
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </div>

@@ -9,7 +9,7 @@ import {
   LayoutTemplate,
 } from 'lucide-react'
 import axiosInstance from '../../../api/axios'
-import socket from '../../../api/socket'
+import socket, { connectSocket, disconnectSocket } from '../../../api/socket'
 import useAuthStore from '../../../store/authStore'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
@@ -452,7 +452,7 @@ const normalizeMsg = (m) => ({
 /* ─── Main Inbox ─────────────────────────────────────────── */
 
 export default function Inbox() {
-  const { user } = useAuthStore()
+  const { user, token } = useAuthStore()
   const [convs,       setConvs]       = useState([])
   const [messages,    setMessages]    = useState({})
   const [team,        setTeam]        = useState([])
@@ -512,8 +512,7 @@ export default function Inbox() {
 
   // ── Socket.io real-time ──────────────────────────────────
   useEffect(() => {
-    socket.connect()
-    socket.emit('join_tenant', user?.tenant?.id || user?.tenant)
+    connectSocket(token) // sends JWT; backend middleware auto-joins tenant room
     if (activeId) socket.emit('join_conversation', activeId)
 
     socket.on('new_message', ({ message }) => {
@@ -540,7 +539,7 @@ export default function Inbox() {
       socket.off('new_message')
       socket.off('new_conversation_message')
       socket.off('conversation_updated')
-      socket.disconnect()
+      disconnectSocket()
     }
   }, [activeId, user])
 

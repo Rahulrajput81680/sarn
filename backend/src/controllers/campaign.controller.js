@@ -1,10 +1,11 @@
 const Campaign = require('../models/Campaign')
-const Contact = require('../models/Contact')
+const Contact  = require('../models/Contact')
+const Message  = require('../models/Message')
 const Template = require('../models/Template')
-const Tenant = require('../models/Tenant')
+const Tenant   = require('../models/Tenant')
 const asyncHandler = require('../utils/asyncHandler')
-const { success } = require('../utils/apiResponse')
-const waService = require('../services/whatsapp/whatsapp.service')
+const { success }  = require('../utils/apiResponse')
+const waService    = require('../services/whatsapp/whatsapp.service')
 
 // GET /api/v1/campaigns
 const getCampaigns = asyncHandler(async (req, res) => {
@@ -36,7 +37,6 @@ const createCampaign = asyncHandler(async (req, res) => {
   const template = await Template.findOne({ _id: templateId, tenant: req.tenantId, status: 'APPROVED' })
   if (!template) return res.status(400).json({ success: false, message: 'Template not found or not approved' })
 
-  // Count recipients
   let contactCount = 0
   if (recipients?.type === 'all') {
     contactCount = await Contact.countDocuments({ tenant: req.tenantId, status: 'active', isOptedIn: true })
@@ -66,42 +66,63 @@ const sendCampaign = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: `Cannot send a campaign with status: ${campaign.status}` })
   }
 
-  // Build contact query
+  // Check tenant message usage limit
+  const tenant = await Tenant.findById(req.tenantId).select('limits usage').lean()
+
   const contactQuery = { tenant: req.tenantId, status: 'active', isOptedIn: true }
   if (campaign.recipients.type === 'segment') contactQuery.tags = { $in: campaign.recipients.tags }
 
   const contacts = await Contact.find(contactQuery).lean()
+
+  if (tenant.usage.messages + contacts.length > tenant.limits.messages) {
+    return res.status(429).json({
+      success: false,
+      message: `Sending this campaign would exceed your message limit (${tenant.limits.messages}). Upgrade your plan.`,
+    })
+  }
 
   campaign.status = 'running'
   campaign.startedAt = new Date()
   campaign.stats.total = contacts.length
   await campaign.save()
 
-  // Process in background (non-blocking) — replace with BullMQ queue for production
+  // Process in background — replace with BullMQ for high-volume production use
   setImmediate(async () => {
     let sent = 0, failed = 0
     for (const contact of contacts) {
       try {
-        await waService.sendTemplateMessage({
+        const result = await waService.sendTemplateMessage({
           to: contact.phone,
           templateName: campaign.template.name,
           language: campaign.template.language,
         })
         sent++
+
+        // Create a Message record so webhook delivery/read events can update campaign stats
+        if (result?.messageId) {
+          await Message.create({
+            tenant: campaign.tenant,
+            campaign: campaign._id,
+            type: 'agent',
+            text: `[Campaign: ${campaign.template.name}]`,
+            status: 'sent',
+            waMessageId: result.messageId,
+            timestamp: new Date(),
+          }).catch(() => {})
+        }
+
         await Contact.findByIdAndUpdate(contact._id, { lastContactDate: new Date(), $inc: { messageCount: 1 } })
       } catch {
         failed++
       }
-      // Small delay between messages
       await new Promise(r => setTimeout(r, 50))
     }
 
+    // delivered/read stats start at 0 — they are incremented by webhook handleStatus
     await Campaign.findByIdAndUpdate(campaign._id, {
       status: 'completed',
       completedAt: new Date(),
       'stats.sent': sent,
-      'stats.delivered': Math.floor(sent * 0.96), // mock delivery rate
-      'stats.read': Math.floor(sent * 0.73),
       'stats.failed': failed,
     })
 

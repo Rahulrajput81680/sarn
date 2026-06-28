@@ -1,12 +1,14 @@
-const mongoose   = require('mongoose')
-const Tenant     = require('../models/Tenant')
-const User       = require('../models/User')
-const Template   = require('../models/Template')
-const Contact    = require('../models/Contact')
-const Campaign   = require('../models/Campaign')
-const WebhookLog = require('../models/WebhookLog')
-const asyncHandler = require('../utils/asyncHandler')
-const { success }  = require('../utils/apiResponse')
+const mongoose      = require('mongoose')
+const Tenant        = require('../models/Tenant')
+const User          = require('../models/User')
+const Template      = require('../models/Template')
+const Contact       = require('../models/Contact')
+const Campaign      = require('../models/Campaign')
+const Conversation  = require('../models/Conversation')
+const Message       = require('../models/Message')
+const WebhookLog    = require('../models/WebhookLog')
+const asyncHandler  = require('../utils/asyncHandler')
+const { success }   = require('../utils/apiResponse')
 
 // GET /api/v1/admin/dashboard
 const getDashboard = asyncHandler(async (req, res) => {
@@ -115,9 +117,22 @@ const updateTenant = asyncHandler(async (req, res) => {
 
 // DELETE /api/v1/admin/tenants/:id
 const deleteTenant = asyncHandler(async (req, res) => {
-  const tenant = await Tenant.findByIdAndDelete(req.params.id)
+  const tenant = await Tenant.findById(req.params.id)
   if (!tenant) return res.status(404).json({ success: false, message: 'Tenant not found' })
-  return success(res, {}, 'Tenant deleted')
+
+  // Cascade delete all tenant-scoped data before removing the tenant
+  await Promise.all([
+    User.deleteMany({ tenant: tenant._id }),
+    Contact.deleteMany({ tenant: tenant._id }),
+    Conversation.deleteMany({ tenant: tenant._id }),
+    Message.deleteMany({ tenant: tenant._id }),
+    Template.deleteMany({ tenant: tenant._id }),
+    Campaign.deleteMany({ tenant: tenant._id }),
+    WebhookLog.deleteMany({ tenant: tenant._id }),
+  ])
+
+  await Tenant.findByIdAndDelete(req.params.id)
+  return success(res, {}, 'Tenant and all associated data deleted')
 })
 
 // GET /api/v1/admin/users

@@ -7,12 +7,14 @@ const { devLimiter } = require('../middleware/rateLimiter.middleware')
 
 router.use(protect)
 
-router.get('/',                     getConversations)
-router.get('/:id/messages',         getMessages)
-router.post('/:id/messages',        sendMessage)
-router.patch('/:id',                updateConversation)
+router.get('/',                  getConversations)
+router.get('/:id/messages',      getMessages)
+router.post('/:id/messages',     sendMessage)
+router.patch('/:id',             updateConversation)
 
-// Dev-only simulate endpoint
-router.post('/dev/simulate-incoming', devLimiter, simulateIncoming)
+// Only mount the simulate endpoint outside production — not available to users
+if (process.env.NODE_ENV !== 'production') {
+  router.post('/dev/simulate-incoming', devLimiter, simulateIncoming)
+}
 
 module.exports = router

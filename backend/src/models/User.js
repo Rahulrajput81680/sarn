@@ -100,6 +100,10 @@ const userSchema = new mongoose.Schema(
 
     // ── 2FA ───────────────────────────────────────────────
     twoFAEnabled: { type: Boolean, default: false },
+
+    // ── Password reset ─────────────────────────────────────
+    passwordResetToken:   { type: String, select: false },
+    passwordResetExpires: { type: Date,   select: false },
   },
   { timestamps: true }
 )

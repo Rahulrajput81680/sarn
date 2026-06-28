@@ -3,7 +3,7 @@ const { protect, restrictTo } = require('../middleware/auth.middleware')
 const c = require('../controllers/admin.controller')
 
 router.use(protect)
-router.use(restrictTo('super_admin', 'admin'))
+router.use(restrictTo('super_admin'))
 
 router.get('/dashboard', c.getDashboard)
 router.get('/health',    c.getSystemHealth)

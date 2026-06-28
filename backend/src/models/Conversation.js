@@ -26,4 +26,7 @@ const conversationSchema = new mongoose.Schema(
   { timestamps: true }
 )
 
+conversationSchema.index({ tenant: 1, status: 1 })
+conversationSchema.index({ tenant: 1, updatedAt: -1 })
+
 module.exports = mongoose.model('Conversation', conversationSchema)

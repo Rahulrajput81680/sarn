@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const User = require('../models/User')
 const Tenant = require('../models/Tenant')
 const { signToken } = require('../utils/generateToken')
@@ -90,4 +91,69 @@ const getMe = asyncHandler(async (req, res) => {
   return success(res, { user })
 })
 
-module.exports = { register, login, getMe }
+// POST /api/v1/auth/forgot-password
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ success: false, message: 'Email is required' })
+
+  const user = await User.findOne({ email: email.toLowerCase().trim() })
+  // Always respond the same way to prevent email enumeration
+  const genericMsg = 'If that email is registered you will receive a reset link shortly'
+
+  if (!user) return success(res, {}, genericMsg)
+
+  // Generate a secure random token (not JWT — single-use, time-limited)
+  const rawToken  = crypto.randomBytes(32).toString('hex')
+  const hashToken = crypto.createHash('sha256').update(rawToken).digest('hex')
+
+  user.passwordResetToken   = hashToken
+  user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
+  await user.save({ validateBeforeSave: false })
+
+  const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${rawToken}`
+
+  if (process.env.NODE_ENV !== 'production') {
+    // In development: return the URL directly so you can test without an email service
+    console.log('[Auth] Password reset URL (dev only):', resetUrl)
+    return success(res, { resetUrl }, genericMsg)
+  }
+
+  // Production: integrate your email service here (SendGrid, Nodemailer, Resend, etc.)
+  // Example:
+  //   await sendEmail({ to: user.email, subject: 'Reset your password', html: `<a href="${resetUrl}">Reset</a>` })
+  // Until an email service is wired up, we clear the token so it doesn't persist unused
+  user.passwordResetToken   = undefined
+  user.passwordResetExpires = undefined
+  await user.save({ validateBeforeSave: false })
+  console.error('[Auth] Email service not configured — password reset not sent for', user.email)
+
+  return success(res, {}, genericMsg)
+})
+
+// POST /api/v1/auth/reset-password/:token
+const resetPassword = asyncHandler(async (req, res) => {
+  const { password } = req.body
+  if (!password || password.length < 8) {
+    return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' })
+  }
+
+  const hashToken = crypto.createHash('sha256').update(req.params.token).digest('hex')
+
+  const user = await User.findOne({
+    passwordResetToken:   hashToken,
+    passwordResetExpires: { $gt: new Date() },
+  }).select('+passwordResetToken +passwordResetExpires')
+
+  if (!user) {
+    return res.status(400).json({ success: false, message: 'Invalid or expired reset token' })
+  }
+
+  user.password             = password
+  user.passwordResetToken   = undefined
+  user.passwordResetExpires = undefined
+  await user.save()
+
+  return success(res, {}, 'Password reset successfully. Please log in with your new password.')
+})
+
+module.exports = { register, login, getMe, forgotPassword, resetPassword }

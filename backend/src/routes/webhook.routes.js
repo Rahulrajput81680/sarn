@@ -1,16 +1,29 @@
-const crypto  = require('crypto')
+const crypto   = require('crypto')
 const router   = require('express').Router()
 const Contact  = require('../models/Contact')
 const Conversation = require('../models/Conversation')
 const Message  = require('../models/Message')
+const Campaign = require('../models/Campaign')
+const Tenant   = require('../models/Tenant')
 const User     = require('../models/User')
 const WebhookLog = require('../models/WebhookLog')
 const { getIO } = require('../config/socket')
 
+// ── Opt-out keywords (Meta policy — must honor these) ──────────────────────────
+const OPT_OUT_KEYWORDS = new Set(['stop', 'unsubscribe', 'optout', 'opt out', 'cancel', 'quit', 'end', 'block'])
+
 // ── Signature verification ────────────────────────────────────────────────────
 function verifySignature(req) {
   const secret = process.env.META_APP_SECRET
-  if (!secret) return true // skip if not configured
+  if (!secret) {
+    // Block in production; warn and allow in dev for ngrok testing
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[Webhook] CRITICAL: META_APP_SECRET not set — rejecting all webhook requests in production')
+      return false
+    }
+    console.warn('[Webhook] WARNING: META_APP_SECRET not set — signature verification skipped (dev only)')
+    return true
+  }
 
   const sig = req.headers['x-hub-signature-256']
   if (!sig) return false
@@ -20,15 +33,31 @@ function verifySignature(req) {
     .update(req.rawBody || '')
     .digest('hex')
 
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
+  try {
+    return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
+  } catch {
+    return false
+  }
 }
 
 // ── Find tenant by Meta phone number ID ───────────────────────────────────────
+// Multi-tenant: look up by Tenant.whatsapp.phoneNumberId first;
+// fall back to env var for the platform-owner account (initial setup).
 async function resolveTenant(phoneNumberId) {
+  if (!phoneNumberId) return null
+
+  // Primary: each tenant stores their phoneNumberId after onboarding
+  const tenant = await Tenant.findOne({ 'whatsapp.phoneNumberId': phoneNumberId }).select('_id').lean()
+  if (tenant) return tenant._id
+
+  // Fallback: env-level phone ID maps to the first admin/super_admin user
   if (phoneNumberId === process.env.META_WA_PHONE_ID) {
-    const user = await User.findOne({ role: 'admin' }).select('tenant').lean()
+    const user = await User.findOne({ role: { $in: ['super_admin', 'admin'] }, tenant: { $ne: null } })
+      .select('tenant')
+      .lean()
     return user?.tenant || null
   }
+
   return null
 }
 
@@ -40,6 +69,24 @@ async function handleMessage(msg, tenantId) {
   const waId  = msg.id
 
   try {
+    // Opt-out detection — must honor per Meta policy
+    const lowerText = text.toLowerCase().trim()
+    if (OPT_OUT_KEYWORDS.has(lowerText) || [...OPT_OUT_KEYWORDS].some(k => lowerText.startsWith(k + ' '))) {
+      await Contact.findOneAndUpdate(
+        { tenant: tenantId, phone },
+        { isOptedIn: false, status: 'opted-out' }
+      )
+      await WebhookLog.create({
+        tenant: tenantId,
+        event: 'contact.opted_out',
+        status: 'success',
+        code: 200,
+        latencyMs: Date.now() - start,
+        payload: { from: phone, keyword: lowerText },
+      }).catch(() => {})
+      return
+    }
+
     let contact = await Contact.findOne({ tenant: tenantId, phone })
     if (!contact) {
       contact = await Contact.create({
@@ -47,7 +94,7 @@ async function handleMessage(msg, tenantId) {
         phone,
         name: phone,
         source: 'organic',
-        optedIn: true,
+        isOptedIn: true,
       })
     }
 
@@ -97,7 +144,7 @@ async function handleMessage(msg, tenantId) {
       code: 200,
       latencyMs: Date.now() - start,
       payload: { from: phone, text, waId },
-    })
+    }).catch(() => {})
   } catch (err) {
     console.error('[Webhook] handleMessage error:', err.message)
     await WebhookLog.create({
@@ -130,6 +177,15 @@ async function handleStatus(status, tenantId) {
       getIO()
         .to(`conv:${msg.conversation}`)
         .emit('message_status', { messageId: msg._id, waMessageId: status.id, status: mapped })
+
+      // Update campaign delivery stats if this message was sent via a campaign
+      if (msg.campaign) {
+        if (mapped === 'delivered') {
+          await Campaign.findByIdAndUpdate(msg.campaign, { $inc: { 'stats.delivered': 1 } })
+        } else if (mapped === 'read') {
+          await Campaign.findByIdAndUpdate(msg.campaign, { $inc: { 'stats.read': 1 } })
+        }
+      }
     }
 
     await WebhookLog.create({
@@ -139,7 +195,7 @@ async function handleStatus(status, tenantId) {
       code: 200,
       latencyMs: Date.now() - start,
       payload: { id: status.id, status: status.status },
-    })
+    }).catch(() => {})
   } catch (err) {
     console.error('[Webhook] handleStatus error:', err.message)
     await WebhookLog.create({
@@ -169,12 +225,12 @@ router.get('/meta', (req, res) => {
 
 // ── POST /api/v1/webhooks/meta — Incoming events ─────────────────────────────
 router.post('/meta', async (req, res) => {
-  // Always ack immediately — Meta retries if we don't respond within 20s
+  // Always ack immediately — Meta retries if no 200 within 20s
   res.sendStatus(200)
 
   try {
     if (!verifySignature(req)) {
-      console.warn('[Webhook] Invalid signature — ignoring request')
+      console.warn('[Webhook] Invalid or missing signature — request rejected')
       return
     }
 
