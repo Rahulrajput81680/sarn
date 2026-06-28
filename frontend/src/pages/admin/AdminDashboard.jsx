@@ -1,66 +1,35 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Building2, Users, MessageSquare, TrendingUp, Server,
+  Building2, Users, MessageSquare, Server,
   Activity, CheckCircle2, AlertTriangle, XCircle, Plus,
-  Megaphone, ChevronRight, Zap, Database, Globe, RefreshCw,
-  ArrowUpRight, ArrowDownRight, Clock, UserPlus,
+  Megaphone, ChevronRight, Zap, Database, RefreshCw,
+  ArrowUpRight, ArrowDownRight, Clock, UserPlus, LayoutTemplate,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import LineChart from '../../components/charts/LineChart'
-import BarChart from '../../components/charts/BarChart'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import PageHeader from '../../components/layout/PageHeader'
+import api from '../../api/axios'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
+const COLORS   = ['bg-purple-500','bg-blue-500','bg-pink-500','bg-orange-500','bg-indigo-500','bg-teal-500','bg-cyan-500','bg-amber-500','bg-red-500','bg-lime-600']
 
-/* ─── Static data ────────────────────────────────────────── */
+function initials(name = '') {
+  const w = name.trim().split(/\s+/)
+  return w.length >= 2 ? (w[0][0] + w[1][0]).toUpperCase() : name.slice(0, 2).toUpperCase()
+}
 
-const msgData = Array.from({ length: 30 }, (_, i) => ({
-  name: `D${i + 1}`,
-  value: Math.floor(82000 + i * 1200 + Math.random() * 4000),
-}))
-
-const mrrData = [
-  { name: 'Nov', value: 38400 }, { name: 'Dec', value: 41200 },
-  { name: 'Jan', value: 42800 }, { name: 'Feb', value: 44100 },
-  { name: 'Mar', value: 45600 }, { name: 'Apr', value: 47300 },
-  { name: 'May', value: 48200 }, { name: 'Jun', value: 51400 },
-]
-
-const signupData = [
-  { name: 'Nov', value: 35 }, { name: 'Dec', value: 41 },
-  { name: 'Jan', value: 38 }, { name: 'Feb', value: 44 },
-  { name: 'Mar', value: 52 }, { name: 'Apr', value: 49 },
-  { name: 'May', value: 61 }, { name: 'Jun', value: 28 },
-]
-
-const RECENT_SIGNUPS = [
-  { id: 1, name: 'Flipkart Commerce', owner: 'raj@flipkart.com',   plan: 'Enterprise', status: 'active',  joined: 'Jun 12, 2026', messages: '12,400', avatar: 'FC', color: 'bg-purple-500' },
-  { id: 2, name: 'QuickMart',         owner: 'info@quickmart.in',  plan: 'Growth',     status: 'trial',   joined: 'Jun 11, 2026', messages: '3,210',  avatar: 'QM', color: 'bg-blue-500'   },
-  { id: 3, name: 'StyleHub',          owner: 'hello@stylehub.co',  plan: 'Growth',     status: 'active',  joined: 'Jun 10, 2026', messages: '8,720',  avatar: 'SH', color: 'bg-pink-500'   },
-  { id: 4, name: 'FoodZone',          owner: 'ops@foodzone.in',    plan: 'Starter',    status: 'active',  joined: 'Jun 9, 2026',  messages: '1,850',  avatar: 'FZ', color: 'bg-orange-500' },
-  { id: 5, name: 'TechStart',         owner: 'ceo@techstart.io',   plan: 'Enterprise', status: 'active',  joined: 'Jun 8, 2026',  messages: '21,300', avatar: 'TS', color: 'bg-indigo-500' },
-  { id: 6, name: 'GreenLeaf',         owner: 'admin@greenleaf.com',plan: 'Starter',    status: 'expired', joined: 'Jun 7, 2026',  messages: '490',    avatar: 'GL', color: 'bg-gray-400'   },
-]
-
-const HEALTH_SERVICES = [
-  { name: 'API Gateway',        status: 'operational', latency: '42ms',  uptime: '99.98%' },
-  { name: 'WhatsApp Webhook',   status: 'operational', latency: '68ms',  uptime: '99.95%' },
-  { name: 'Meta Cloud API',     status: 'degraded',    latency: '310ms', uptime: '99.71%', note: 'Elevated latency in ap-south-1' },
-  { name: 'Message Queue',      status: 'operational', latency: '12ms',  uptime: '99.99%' },
-  { name: 'Database (Primary)', status: 'operational', latency: '8ms',   uptime: '100%'   },
-  { name: 'Database (Replica)', status: 'operational', latency: '11ms',  uptime: '100%'   },
-  { name: 'Storage / CDN',      status: 'operational', latency: '28ms',  uptime: '99.97%' },
-]
-
-const planColors   = { Enterprise: 'purple', Growth: 'blue', Starter: 'gray' }
-const statusColors = { active: 'green', trial: 'yellow', expired: 'red' }
+function fmtNum(n) {
+  if (n == null) return '—'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
 
 /* ─── KPI card ───────────────────────────────────────────── */
 
-function KPI({ title, value, sub, delta, deltaPositive, icon: Icon, iconBg, index }) {
+function KPI({ title, value, sub, delta, deltaPositive, icon: Icon, iconBg, index, loading }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -74,10 +43,13 @@ function KPI({ title, value, sub, delta, deltaPositive, icon: Icon, iconBg, inde
           <Icon size={16} />
         </div>
       </div>
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
+      {loading
+        ? <div className="h-8 w-20 bg-gray-100 animate-pulse rounded-lg" />
+        : <p className="text-2xl font-bold text-gray-900">{value}</p>
+      }
       {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
       {delta && (
-        <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${deltaPositive ? 'text-green-600' : 'text-red-500'}`}>
+        <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${deltaPositive ? 'text-green-600' : 'text-amber-600'}`}>
           {deltaPositive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
           {delta}
         </div>
@@ -86,13 +58,13 @@ function KPI({ title, value, sub, delta, deltaPositive, icon: Icon, iconBg, inde
   )
 }
 
-/* ─── Account status breakdown card ─────────────────────── */
+/* ─── Account status breakdown ───────────────────────────── */
 
-function AccountBreakdown({ index }) {
+function AccountBreakdown({ activeTenants, inactiveTenants, loading, index }) {
+  const total = (activeTenants + inactiveTenants) || 1
   const items = [
-    { label: 'Active',  value: 187, pct: 82, color: 'bg-green-500',  text: 'text-green-700',  badge: 'bg-green-50 border-green-200' },
-    { label: 'Trial',   value: 29,  pct: 13, color: 'bg-amber-400',  text: 'text-amber-700',  badge: 'bg-amber-50 border-amber-200' },
-    { label: 'Expired', value: 12,  pct: 5,  color: 'bg-red-400',    text: 'text-red-600',    badge: 'bg-red-50 border-red-200' },
+    { label: 'Active',   value: activeTenants,   pct: Math.round((activeTenants   / total) * 100), color: 'bg-green-500', text: 'text-green-700', badge: 'bg-green-50 border-green-200' },
+    { label: 'Inactive', value: inactiveTenants, pct: Math.round((inactiveTenants / total) * 100), color: 'bg-gray-400',  text: 'text-gray-600',  badge: 'bg-gray-50 border-gray-200' },
   ]
   return (
     <motion.div
@@ -107,36 +79,43 @@ function AccountBreakdown({ index }) {
           <Activity size={16} className="text-blue-600" />
         </div>
       </div>
-      <div className="space-y-2.5">
-        {items.map(({ label, value, pct, color, text, badge }) => (
-          <div key={label}>
-            <div className="flex items-center justify-between mb-1">
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${badge} ${text}`}>{label}</span>
-              <span className="text-xs font-bold text-gray-800">{value} <span className="text-gray-400 font-normal">({pct}%)</span></span>
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2].map((i) => <div key={i} className="h-5 bg-gray-100 animate-pulse rounded" />)}
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {items.map(({ label, value, pct, color, text, badge }) => (
+            <div key={label}>
+              <div className="flex items-center justify-between mb-1">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${badge} ${text}`}>{label}</span>
+                <span className="text-xs font-bold text-gray-800">{value} <span className="text-gray-400 font-normal">({pct}%)</span></span>
+              </div>
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.7, ease: EASE_OUT, delay: index * 0.05 + 0.2 }}
+                  className={`h-full rounded-full ${color}`}
+                />
+              </div>
             </div>
-            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${pct}%` }}
-                transition={{ duration: 0.7, ease: EASE_OUT, delay: index * 0.05 + 0.2 }}
-                className={`h-full rounded-full ${color}`}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </motion.div>
   )
 }
 
-/* ─── MRR / ARR card ─────────────────────────────────────── */
+/* ─── Platform stats card ────────────────────────────────── */
 
-function RevenueCard({ index }) {
-  const MRR = 51400
-  const ARR = MRR * 12
-  const mrrGrowth = '+6.7%'
-  const churnRate = '1.8%'
-
+function PlatformStats({ stats, loading, index }) {
+  const rows = [
+    { label: 'Total Users',       value: stats?.totalUsers,       icon: Users,          color: 'text-blue-600',   bg: 'bg-blue-50' },
+    { label: 'Total Contacts',    value: stats?.totalContacts,    icon: Database,       color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Campaigns Run',     value: stats?.totalCampaigns,   icon: Megaphone,      color: 'text-amber-600',  bg: 'bg-amber-50' },
+    { label: 'Pending Templates', value: stats?.pendingTemplates, icon: LayoutTemplate, color: 'text-orange-600', bg: 'bg-orange-50' },
+  ]
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -144,29 +123,22 @@ function RevenueCard({ index }) {
       transition={{ duration: 0.22, ease: EASE_OUT, delay: index * 0.05 }}
       className="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
     >
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Revenue</p>
-        <div className="w-9 h-9 rounded-xl bg-green-50 flex items-center justify-center">
-          <TrendingUp size={16} className="text-green-600" />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3 mb-3">
-        <div className="p-2.5 bg-green-50 rounded-xl border border-green-100">
-          <p className="text-[10px] font-semibold text-green-600 uppercase tracking-wide mb-0.5">MRR</p>
-          <p className="text-lg font-bold text-gray-900">₹{(MRR / 1000).toFixed(1)}K</p>
-          <p className="text-xs text-green-600 font-medium flex items-center gap-0.5 mt-0.5">
-            <ArrowUpRight size={10} />{mrrGrowth} vs last mo
-          </p>
-        </div>
-        <div className="p-2.5 bg-purple-50 rounded-xl border border-purple-100">
-          <p className="text-[10px] font-semibold text-purple-600 uppercase tracking-wide mb-0.5">ARR</p>
-          <p className="text-lg font-bold text-gray-900">₹{(ARR / 100000).toFixed(2)}L</p>
-          <p className="text-xs text-gray-400 font-medium mt-0.5">Annualised</p>
-        </div>
-      </div>
-      <div className="flex items-center justify-between text-xs pt-2 border-t border-gray-100">
-        <span className="text-gray-400">Churn rate</span>
-        <span className="font-semibold text-red-500">{churnRate} / mo</span>
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Platform Stats</p>
+      <div className="space-y-2.5">
+        {rows.map(({ label, value, icon: Icon, color, bg }) => (
+          <div key={label} className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded-lg ${bg} flex items-center justify-center shrink-0`}>
+                <Icon size={12} className={color} />
+              </div>
+              <span className="text-xs text-gray-600">{label}</span>
+            </div>
+            {loading
+              ? <div className="h-4 w-10 bg-gray-100 animate-pulse rounded" />
+              : <span className="text-sm font-bold text-gray-900">{value?.toLocaleString() ?? '—'}</span>
+            }
+          </div>
+        ))}
       </div>
     </motion.div>
   )
@@ -174,18 +146,30 @@ function RevenueCard({ index }) {
 
 /* ─── System health widget ───────────────────────────────── */
 
-function SystemHealth() {
+const STATIC_SERVICES = [
+  { name: 'API Gateway',        key: 'api' },
+  { name: 'WhatsApp Webhook',   key: 'webhook' },
+  { name: 'Meta Cloud API',     key: 'meta' },
+  { name: 'Database (Primary)', key: 'db' },
+]
+
+function SystemHealthWidget({ health, loading }) {
   const [expanded, setExpanded] = useState(false)
-  const overallOk = HEALTH_SERVICES.every((s) => s.status === 'operational')
-  const degraded  = HEALTH_SERVICES.filter((s) => s.status === 'degraded').length
-  const visible   = expanded ? HEALTH_SERVICES : HEALTH_SERVICES.slice(0, 4)
+  const dbOk = health?.db?.connected !== false
+
+  const services = STATIC_SERVICES.map((s) => ({
+    ...s,
+    status: s.key === 'db' ? (dbOk ? 'operational' : 'down') : 'operational',
+  }))
+
+  const visible = expanded ? services : services.slice(0, 3)
 
   const statusIcon = (s) => {
     if (s === 'operational') return <CheckCircle2 size={13} className="text-green-500 shrink-0" />
     if (s === 'degraded')    return <AlertTriangle size={13} className="text-amber-500 shrink-0" />
     return <XCircle size={13} className="text-red-500 shrink-0" />
   }
-  const statusLabel = (s) => ({
+  const statusCls = (s) => ({
     operational: { text: 'text-green-600', bg: 'bg-green-50 border-green-200', label: 'Operational' },
     degraded:    { text: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', label: 'Degraded' },
     down:        { text: 'text-red-600',   bg: 'bg-red-50 border-red-200',     label: 'Down' },
@@ -195,30 +179,27 @@ function SystemHealth() {
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${overallOk ? 'bg-green-50' : 'bg-amber-50'}`}>
-            <Server size={15} className={overallOk ? 'text-green-600' : 'text-amber-600'} />
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${dbOk ? 'bg-green-50' : 'bg-red-50'}`}>
+            <Server size={15} className={dbOk ? 'text-green-600' : 'text-red-600'} />
           </div>
           <div>
             <p className="text-sm font-semibold text-gray-900">System Health</p>
             <p className="text-xs text-gray-400">
-              {overallOk ? 'All systems operational' : `${degraded} service${degraded > 1 ? 's' : ''} degraded`}
+              {loading ? 'Checking…' : dbOk ? 'All systems operational' : 'DB connection issue'}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${overallOk ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-            {overallOk ? '● All Good' : '⚠ Issues Detected'}
+        {health && !loading && (
+          <span className="text-[10px] font-medium text-gray-400 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">
+            Up {Math.floor(health.uptime / 60)}m · {health.memory?.usedMB}MB
           </span>
-          <button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
-            <RefreshCw size={13} />
-          </button>
-        </div>
+        )}
       </div>
 
       <div className="divide-y divide-gray-50">
         <AnimatePresence initial={false}>
           {visible.map((svc, i) => {
-            const st = statusLabel(svc.status)
+            const st = statusCls(svc.status)
             return (
               <motion.div
                 key={svc.name}
@@ -229,24 +210,9 @@ function SystemHealth() {
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   {statusIcon(svc.status)}
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{svc.name}</p>
-                    {svc.note && <p className="text-xs text-amber-600 truncate">{svc.note}</p>}
-                  </div>
+                  <p className="text-sm font-medium text-gray-800 truncate">{svc.name}</p>
                 </div>
-                <div className="flex items-center gap-4 shrink-0 ml-3">
-                  <div className="text-right hidden sm:block">
-                    <p className="text-xs font-semibold text-gray-700">{svc.latency}</p>
-                    <p className="text-[10px] text-gray-400">latency</p>
-                  </div>
-                  <div className="text-right hidden md:block">
-                    <p className="text-xs font-semibold text-gray-700">{svc.uptime}</p>
-                    <p className="text-[10px] text-gray-400">uptime</p>
-                  </div>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${st.bg} ${st.text}`}>
-                    {st.label}
-                  </span>
-                </div>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${st.bg} ${st.text}`}>{st.label}</span>
               </motion.div>
             )
           })}
@@ -257,16 +223,18 @@ function SystemHealth() {
         onClick={() => setExpanded((v) => !v)}
         className="w-full flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-gray-400 hover:text-gray-600 border-t border-gray-100 hover:bg-gray-50 transition-colors"
       >
-        {expanded ? 'Show less' : `Show ${HEALTH_SERVICES.length - 4} more services`}
+        {expanded ? 'Show less' : `Show ${services.length - 3} more`}
         <ChevronRight size={12} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>
     </div>
   )
 }
 
-/* ─── Recent signups table ───────────────────────────────── */
+/* ─── Recent clients table ───────────────────────────────── */
 
-function RecentSignups() {
+const planColors = { enterprise: 'purple', growth: 'blue', starter: 'gray' }
+
+function RecentClients({ tenants, loading }) {
   const navigate = useNavigate()
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -275,7 +243,7 @@ function RecentSignups() {
           <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
             <UserPlus size={15} className="text-blue-600" />
           </div>
-          <p className="text-sm font-semibold text-gray-900">Recent Signups</p>
+          <p className="text-sm font-semibold text-gray-900">Recent Clients</p>
         </div>
         <button
           onClick={() => navigate('/admin/tenants')}
@@ -296,38 +264,51 @@ function RecentSignups() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {RECENT_SIGNUPS.map((t, i) => (
+            {loading ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <tr key={i}>
+                  <td colSpan={5} className="px-5 py-3"><div className="h-8 bg-gray-100 animate-pulse rounded-lg" /></td>
+                </tr>
+              ))
+            ) : tenants.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="text-center py-10 text-sm text-gray-400">
+                  No clients yet — use <span className="text-green-600 font-medium">Add New Client</span> to get started
+                </td>
+              </tr>
+            ) : tenants.map((t, i) => (
               <motion.tr
-                key={t.id}
+                key={t._id}
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.15, ease: EASE_OUT, delay: i * 0.04 }}
-                onClick={() => navigate(`/admin/tenants/${t.id}`)}
+                onClick={() => navigate(`/admin/tenants/${t._id}`)}
                 className="hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-2.5">
-                    <div className={`w-8 h-8 rounded-full ${t.color} flex items-center justify-center shrink-0`}>
-                      <span className="text-white text-xs font-bold">{t.avatar}</span>
+                    <div className={`w-8 h-8 rounded-full ${COLORS[i % COLORS.length]} flex items-center justify-center shrink-0`}>
+                      <span className="text-white text-xs font-bold">{initials(t.name)}</span>
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-gray-900 truncate">{t.name}</p>
-                      <p className="text-xs text-gray-400 truncate">{t.owner}</p>
+                      <p className="text-xs text-gray-400 truncate">{t.owner?.email || '—'}</p>
                     </div>
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <Badge color={planColors[t.plan]}>{t.plan}</Badge>
+                  <Badge color={planColors[t.plan] || 'gray'}>{t.plan ? t.plan.charAt(0).toUpperCase() + t.plan.slice(1) : '—'}</Badge>
                 </td>
                 <td className="px-4 py-3">
-                  <Badge color={statusColors[t.status]}>{t.status}</Badge>
+                  <Badge color={t.isActive ? 'green' : 'red'}>{t.isActive ? 'Active' : 'Inactive'}</Badge>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <span className="text-sm font-medium text-gray-700">{t.messages}</span>
+                  <span className="text-sm font-medium text-gray-700">{(t.usage?.messages || 0).toLocaleString()}</span>
                 </td>
                 <td className="px-4 py-3">
                   <span className="text-xs text-gray-400 flex items-center gap-1">
-                    <Clock size={10} /> {t.joined}
+                    <Clock size={10} />
+                    {new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </span>
                 </td>
               </motion.tr>
@@ -343,91 +324,91 @@ function RecentSignups() {
 
 export default function AdminDashboard() {
   const navigate = useNavigate()
+  const [stats,   setStats]   = useState(null)
+  const [tenants, setTenants] = useState([])
+  const [health,  setHealth]  = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const [dashRes, healthRes] = await Promise.all([
+        api.get('/api/v1/admin/dashboard'),
+        api.get('/api/v1/admin/health'),
+      ])
+      setStats(dashRes.data.data.stats)
+      setTenants(dashRes.data.data.recentTenants)
+      setHealth(healthRes.data.data)
+    } catch {
+      // stats remain null — loading skeletons clear
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Admin Dashboard"
-        description="Platform-wide overview for Wixabotic"
+        description="Platform-wide overview for SarnConnect"
         breadcrumbs={['Admin', 'Dashboard']}
         action={
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => navigate('/admin/tenants/new')}>
               New Client
             </Button>
-            <Button size="sm" icon={<Megaphone size={14} />} onClick={() => navigate('/admin/announcements')}>
-              Announce
+            <Button size="sm" icon={<RefreshCw size={14} />} onClick={load}>
+              Refresh
             </Button>
           </div>
         }
       />
 
-      {/* Row 1 — 5 KPI widgets */}
+      {/* Row 1 — KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <KPI
-          index={0}
+          index={0} loading={loading}
           title="Total Clients"
-          value="228"
-          sub="across all plans"
-          delta="+8 this month"
-          deltaPositive
+          value={fmtNum(stats?.totalTenants)}
+          sub="registered businesses"
           icon={Building2}
           iconBg="bg-blue-50 text-blue-600"
         />
-        <AccountBreakdown index={1} />
-        <RevenueCard index={2} />
-        <KPI
-          index={3}
-          title="API Requests"
-          value="4.2M"
-          sub="this month"
-          delta="+18% vs last month"
-          deltaPositive
-          icon={Zap}
-          iconBg="bg-amber-50 text-amber-600"
+        <AccountBreakdown
+          index={1} loading={loading}
+          activeTenants={stats?.activeTenants   || 0}
+          inactiveTenants={stats?.inactiveTenants || 0}
         />
+        <PlatformStats stats={stats} loading={loading} index={2} />
         <KPI
-          index={4}
-          title="Messages Processed"
-          value="2.84M"
-          sub="this month"
-          delta="+11.4% vs last month"
-          deltaPositive
+          index={3} loading={loading}
+          title="Messages Sent"
+          value={fmtNum(stats?.totalMessages)}
+          sub="across all clients"
           icon={MessageSquare}
           iconBg="bg-green-50 text-green-600"
         />
-      </div>
-
-      {/* Row 2 — Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <LineChart
-            data={msgData}
-            lines={[{ key: 'value', color: '#16a34a', label: 'Messages Processed' }]}
-            title="Messages Processed — Last 30 Days"
-          />
-        </div>
-        <LineChart
-          data={mrrData}
-          lines={[{ key: 'value', color: '#8b5cf6', label: 'MRR (₹)' }]}
-          title="MRR Trend (Last 8 Months)"
+        <KPI
+          index={4} loading={loading}
+          title="Pending Templates"
+          value={fmtNum(stats?.pendingTemplates)}
+          sub="awaiting review"
+          icon={LayoutTemplate}
+          iconBg="bg-amber-50 text-amber-600"
+          delta={stats?.pendingTemplates > 0 ? 'Needs attention' : undefined}
+          deltaPositive={false}
         />
       </div>
 
-      {/* Row 3 — System health + Signups bar */}
+      {/* Row 2 — Recent clients + system health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-          <SystemHealth />
+          <RecentClients tenants={tenants} loading={loading} />
         </div>
-        <BarChart
-          data={signupData}
-          bars={[{ key: 'value', color: '#3b82f6', label: 'New Clients' }]}
-          title="New Signups (Last 8 Months)"
-        />
+        <SystemHealthWidget health={health} loading={loading} />
       </div>
-
-      {/* Row 4 — Recent signups table */}
-      <RecentSignups />
     </div>
   )
 }

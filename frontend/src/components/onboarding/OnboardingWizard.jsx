@@ -2,73 +2,40 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Check, ChevronRight, Loader2, CheckCircle2,
-  Building2, CreditCard, Smartphone, Users,
+  ExternalLink, ChevronDown, Eye, EyeOff, AlertCircle,
 } from 'lucide-react'
 import useAuthStore from '../../store/authStore'
+import axiosInstance from '../../api/axios'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
 
 const STEP_META = [
-  { id: 'business', label: 'Business', icon: Building2 },
-  { id: 'plan', label: 'Plan', icon: CreditCard },
-  { id: 'whatsapp', label: 'WhatsApp', icon: Smartphone },
-  { id: 'team', label: 'Team', icon: Users },
+  { id: 'business',  label: 'Business' },
+  { id: 'whatsapp', label: 'WhatsApp' },
 ]
 
 const INDUSTRIES = [
   'E-commerce', 'Healthcare', 'Education', 'Finance',
-  'Real Estate', 'Retail', 'Hospitality', 'Other',
-]
-
-const PLANS = [
-  {
-    id: 'trial',
-    name: 'Free Trial',
-    price: '$0',
-    duration: '14 days',
-    features: ['500 messages/day', '1 WhatsApp number', 'Basic automation'],
-  },
-  {
-    id: 'starter',
-    name: 'Starter',
-    price: '$29',
-    duration: '/month',
-    features: ['5,000 messages/day', '1 WhatsApp number', 'Full automation', 'Analytics'],
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: '$79',
-    duration: '/month',
-    features: ['Unlimited messages', '3 WhatsApp numbers', 'Priority support', 'Advanced analytics'],
-  },
-]
-
-const META_STEPS = [
-  { label: 'Connect Facebook Business Manager', desc: 'OAuth flow to link FB Business account', action: 'Connect via Facebook' },
-  { label: 'Verify Business Details', desc: 'Business name, website, industry confirmation', action: 'Confirm Details' },
-  { label: 'Connect WhatsApp Business Account', desc: 'WABA linking via Meta Graph API', action: 'Link WABA' },
-  { label: 'Add Phone Number', desc: 'Enter number to register with WhatsApp Business', action: 'Register Number' },
-  { label: 'OTP Verification', desc: 'Receive and enter OTP to verify ownership', action: 'Verify OTP' },
-  { label: 'Webhook Connection', desc: 'System configures webhooks for message events', action: 'Auto-configure' },
-  { label: 'Status Dashboard', desc: 'View quality rating, messaging limits, connection health', action: 'View Status' },
+  'Real Estate', 'Retail', 'Hospitality', 'Technology', 'Other',
 ]
 
 const fieldVariants = {
-  hidden: { opacity: 0, y: 8 },
+  hidden:  { opacity: 0, y: 8 },
   visible: (i) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.22, ease: EASE_OUT, delay: i * 0.045 },
+    opacity: 1, y: 0,
+    transition: { duration: 0.22, ease: EASE_OUT, delay: i * 0.05 },
   }),
 }
 
-function StepBtn({ onClick, disabled, children, variant = 'primary' }) {
+/* ─── Shared button ────────────────────────────────────────── */
+
+function Btn({ onClick, disabled, loading, children, variant = 'primary', type = 'button' }) {
   return (
     <motion.button
+      type={type}
       whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
       className={`flex items-center gap-1.5 px-5 py-2 text-sm font-medium rounded-lg transition-opacity ${
         variant === 'primary'
           ? 'bg-green-600 text-white disabled:opacity-40 disabled:cursor-not-allowed'
@@ -76,400 +43,371 @@ function StepBtn({ onClick, disabled, children, variant = 'primary' }) {
       }`}
       style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1), opacity 120ms ease' }}
     >
+      {loading && <Loader2 size={13} className="animate-spin" />}
       {children}
     </motion.button>
   )
 }
 
-function BusinessDetails({ data, onChange, onNext }) {
-  const valid = data.companyName?.trim() && data.industry
+/* ─── Step 1 — Business Info ───────────────────────────────── */
+
+function BusinessDetails({ onNext }) {
+  const { user, updateUser } = useAuthStore()
+  const [form, setForm]     = useState({
+    businessName: user?.businessName || '',
+    industry:     '',
+    website:      '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState('')
+
+  const valid = form.businessName.trim() && form.industry
+
+  const handleNext = async () => {
+    if (!valid) return
+    setSaving(true)
+    setError('')
+    try {
+      await axiosInstance.put('/api/v1/profile', {
+        businessName: form.businessName.trim(),
+        category:     form.industry,
+        website:      form.website.trim(),
+      })
+      updateUser({ businessName: form.businessName.trim() })
+      onNext(form)
+    } catch {
+      setError('Failed to save. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div>
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Business Details</h2>
-        <p className="text-sm text-gray-500 mt-1">Tell us about your company</p>
+        <p className="text-sm text-gray-500 mt-1">Tell us about your business so we can set up your profile</p>
       </div>
+
       <div className="space-y-4">
-        {[
-          { label: 'Company Name', key: 'companyName', type: 'text', placeholder: 'Acme Corp', i: 0 },
-          { label: 'Website URL', key: 'website', type: 'url', placeholder: 'https://yourcompany.com', i: 1 },
-        ].map(({ label, key, type, placeholder, i }) => (
-          <motion.div key={key} custom={i} initial="hidden" animate="visible" variants={fieldVariants}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-            <input
-              type={type}
-              placeholder={placeholder}
-              value={data[key] || ''}
-              onChange={(e) => onChange({ ...data, [key]: e.target.value })}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-shadow duration-150"
-            />
-          </motion.div>
-        ))}
-        <motion.div custom={2} initial="hidden" animate="visible" variants={fieldVariants}>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
+        <motion.div custom={0} initial="hidden" animate="visible" variants={fieldVariants}>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Business Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            placeholder="Acme Corp"
+            value={form.businessName}
+            onChange={(e) => setForm({ ...form, businessName: e.target.value })}
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
+          />
+        </motion.div>
+
+        <motion.div custom={1} initial="hidden" animate="visible" variants={fieldVariants}>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Industry <span className="text-red-500">*</span>
+          </label>
           <select
-            value={data.industry || ''}
-            onChange={(e) => onChange({ ...data, industry: e.target.value })}
+            value={form.industry}
+            onChange={(e) => setForm({ ...form, industry: e.target.value })}
             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
           >
             <option value="">Select industry…</option>
             {INDUSTRIES.map((ind) => <option key={ind}>{ind}</option>)}
           </select>
         </motion.div>
+
+        <motion.div custom={2} initial="hidden" animate="visible" variants={fieldVariants}>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Website <span className="text-xs text-gray-400 font-normal">(optional)</span>
+          </label>
+          <input
+            type="url"
+            placeholder="https://yourcompany.com"
+            value={form.website}
+            onChange={(e) => setForm({ ...form, website: e.target.value })}
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
+          />
+        </motion.div>
       </div>
+
+      {error && (
+        <div className="mt-3 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <AlertCircle size={13} /> {error}
+        </div>
+      )}
+
       <div className="mt-6 flex justify-end">
-        <StepBtn onClick={onNext} disabled={!valid}>
+        <Btn onClick={handleNext} disabled={!valid} loading={saving}>
           Continue <ChevronRight size={15} />
-        </StepBtn>
+        </Btn>
       </div>
     </div>
   )
 }
 
-function ChoosePlan({ data, onChange, onNext, onBack }) {
-  return (
-    <div>
-      <div className="mb-5">
-        <h2 className="text-xl font-semibold text-gray-900">Choose Your Plan</h2>
-        <p className="text-sm text-gray-500 mt-1">You can upgrade anytime</p>
-      </div>
-      <div className="space-y-3">
-        {PLANS.map((plan, i) => (
-          <motion.button
-            key={plan.id}
-            custom={i}
-            initial="hidden"
-            animate="visible"
-            variants={fieldVariants}
-            whileTap={{ scale: 0.985 }}
-            onClick={() => onChange({ ...data, plan: plan.id })}
-            className={`w-full text-left p-4 rounded-xl border-2 transition-colors duration-150 ${
-              data.plan === plan.id
-                ? 'border-green-500 bg-green-50'
-                : 'border-gray-100 bg-white hover:border-gray-200'
-            }`}
-            style={{ transition: 'border-color 150ms ease, background-color 150ms ease, transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{plan.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{plan.features.join(' · ')}</p>
-              </div>
-              <div className="text-right shrink-0 ml-3">
-                <p className="text-base font-bold text-gray-900">{plan.price}</p>
-                <p className="text-xs text-gray-400">{plan.duration}</p>
-              </div>
-            </div>
-            <AnimatePresence>
-              {data.plan === plan.id && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.18, ease: EASE_OUT }}
-                  className="mt-2 flex items-center gap-1 text-green-600 overflow-hidden"
-                >
-                  <Check size={12} />
-                  <span className="text-xs font-medium">Selected</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.button>
-        ))}
-      </div>
-      <div className="mt-6 flex justify-between">
-        <StepBtn onClick={onBack} variant="ghost">Back</StepBtn>
-        <StepBtn onClick={onNext} disabled={!data.plan}>
-          Continue <ChevronRight size={15} />
-        </StepBtn>
-      </div>
-    </div>
-  )
-}
+/* ─── Step 2 — Connect WhatsApp ────────────────────────────── */
 
-function ConnectWhatsApp({ data, onChange, onNext, onBack }) {
-  const [metaStep, setMetaStep] = useState(data.metaStep ?? 0)
-  const [loading, setLoading] = useState(false)
-  const [phone, setPhone] = useState(data.phone || '')
-  const [otp, setOtp] = useState(['', '', '', ''])
-  const [metaDir, setMetaDir] = useState(1)
-  const isComplete = metaStep >= META_STEPS.length
+function ConnectWhatsApp({ bizData, onFinish }) {
+  const [form, setForm]       = useState({
+    phoneNumber:   '',
+    displayName:   bizData?.businessName || '',
+    phoneNumberId: '',
+    wabaId:        '',
+    accessToken:   '',
+  })
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showToken,    setShowToken]    = useState(false)
+  const [saving,       setSaving]       = useState(false)
+  const [error,        setError]        = useState('')
 
-  const advance = () => {
-    setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      setMetaDir(1)
-      const next = metaStep + 1
-      setMetaStep(next)
-      onChange({ ...data, metaStep: next, phone })
-    }, 1600)
+  const valid = form.phoneNumber.trim() && form.displayName.trim()
+
+  const handleConnect = async () => {
+    if (!valid) return
+    setSaving(true)
+    setError('')
+    try {
+      await axiosInstance.put('/api/v1/profile/wa-connect', {
+        phoneNumber:   form.phoneNumber.trim(),
+        displayName:   form.displayName.trim(),
+        phoneNumberId: form.phoneNumberId.trim() || undefined,
+        wabaId:        form.wabaId.trim()        || undefined,
+        accessToken:   form.accessToken.trim()   || undefined,
+      })
+      onFinish(form.displayName)
+    } catch {
+      setError('Failed to connect WhatsApp. Check your details and try again.')
+    } finally {
+      setSaving(false)
+    }
   }
-
-  const handleOtp = (i, val) => {
-    const next = [...otp]
-    next[i] = val.slice(-1)
-    setOtp(next)
-    if (val && i < 3) document.getElementById(`otp-${i + 1}`)?.focus()
-  }
-
-  const canAdvance =
-    metaStep === 3 ? phone.trim().length >= 7
-    : metaStep === 4 ? otp.every(Boolean)
-    : true
 
   return (
     <div>
       <div className="mb-5">
         <h2 className="text-xl font-semibold text-gray-900">Connect WhatsApp</h2>
-        <p className="text-sm text-gray-500 mt-1">Link your number via Meta API</p>
+        <p className="text-sm text-gray-500 mt-1">Link your WhatsApp Business number to start messaging</p>
       </div>
 
-      {/* Sub-step progress dots */}
-      <div className="flex items-center gap-1.5 mb-4">
-        {META_STEPS.map((_, i) => (
-          <div
-            key={i}
-            className="h-1 flex-1 rounded-full transition-colors duration-300"
-            style={{
-              backgroundColor: i < metaStep ? '#16a34a' : i === metaStep ? '#86efac' : '#f3f4f6',
-              transition: 'background-color 300ms ease',
-            }}
+      {/* Meta policy notice */}
+      <div className="mb-5 bg-blue-50 border border-blue-200 rounded-xl p-3.5">
+        <p className="text-xs font-semibold text-blue-800 mb-1.5">Meta Business Requirements</p>
+        <ul className="space-y-1 text-xs text-blue-700">
+          <li className="flex items-start gap-1.5"><Check size={11} className="mt-0.5 shrink-0 text-blue-500" /> WhatsApp Business Account (WABA) approved by Meta</li>
+          <li className="flex items-start gap-1.5"><Check size={11} className="mt-0.5 shrink-0 text-blue-500" /> Phone number verified and registered with Meta</li>
+          <li className="flex items-start gap-1.5"><Check size={11} className="mt-0.5 shrink-0 text-blue-500" /> Business verified in Meta Business Manager</li>
+        </ul>
+        <a
+          href="https://developers.facebook.com/docs/whatsapp/cloud-api/get-started"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-blue-700 hover:text-blue-900"
+        >
+          Meta setup guide <ExternalLink size={10} />
+        </a>
+      </div>
+
+      <div className="space-y-4">
+        <motion.div custom={0} initial="hidden" animate="visible" variants={fieldVariants}>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            WhatsApp Phone Number <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="tel"
+            placeholder="+91 98765 43210"
+            value={form.phoneNumber}
+            onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
           />
-        ))}
+          <p className="text-xs text-gray-400 mt-1">Include country code, e.g. +91 for India</p>
+        </motion.div>
+
+        <motion.div custom={1} initial="hidden" animate="visible" variants={fieldVariants}>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Display Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            placeholder="Acme Support"
+            value={form.displayName}
+            onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+          <p className="text-xs text-gray-400 mt-1">This name appears to your customers in WhatsApp</p>
+        </motion.div>
+
+        {/* Advanced: Meta API credentials */}
+        <motion.div custom={2} initial="hidden" animate="visible" variants={fieldVariants}>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <ChevronDown size={13} className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+            {showAdvanced ? 'Hide' : 'Add'} Meta API Credentials
+            <span className="text-gray-400 font-normal">(optional — required for sending messages)</span>
+          </button>
+
+          <AnimatePresence>
+            {showAdvanced && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.22, ease: EASE_OUT }}
+                className="overflow-hidden"
+              >
+                <div className="mt-3 space-y-3 bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <p className="text-xs text-gray-500">
+                    Find these in your{' '}
+                    <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Meta Developer Console</a>
+                    {' '}→ WhatsApp → API Setup
+                  </p>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Phone Number ID</label>
+                    <input
+                      type="text"
+                      placeholder="123456789012345"
+                      value={form.phoneNumberId}
+                      onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })}
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">WhatsApp Business Account ID (WABA ID)</label>
+                    <input
+                      type="text"
+                      placeholder="987654321098765"
+                      value={form.wabaId}
+                      onChange={(e) => setForm({ ...form, wabaId: e.target.value })}
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Permanent Access Token</label>
+                    <div className="relative">
+                      <input
+                        type={showToken ? 'text' : 'password'}
+                        placeholder="EAA..."
+                        value={form.accessToken}
+                        onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
+                        className="w-full px-3 py-2 pr-9 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowToken((v) => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showToken ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Use a System User permanent token — never a temporary one</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
       </div>
 
-      <AnimatePresence mode="wait" custom={metaDir}>
-        {isComplete ? (
-          <motion.div
-            key="done"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.28, ease: EASE_OUT }}
-            className="text-center py-4"
-          >
-            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
-              <CheckCircle2 size={24} className="text-green-600" />
-            </div>
-            <p className="font-semibold text-gray-900 text-sm">WhatsApp Connected!</p>
-            <p className="text-xs text-gray-500 mt-1 mb-4">{phone} is active and verified</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[['Quality', 'High'], ['Limit', '1K/day'], ['Status', 'Live']].map(([label, val]) => (
-                <div key={label} className="bg-gray-50 rounded-lg p-2.5">
-                  <p className="text-xs text-gray-400">{label}</p>
-                  <p className="text-sm font-semibold text-gray-900 mt-0.5">{val}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        ) : (
-          <motion.div
-            key={metaStep}
-            custom={metaDir}
-            initial={(d) => ({ opacity: 0, x: d * 24 })}
-            animate={{ opacity: 1, x: 0 }}
-            exit={(d) => ({ opacity: 0, x: d * -24 })}
-            transition={{ duration: 0.2, ease: EASE_OUT }}
-            className="bg-gray-50 rounded-xl p-4"
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
-                {metaStep + 1}/{META_STEPS.length}
-              </span>
-            </div>
-            <p className="text-sm font-semibold text-gray-900 mt-1">{META_STEPS[metaStep].label}</p>
-            <p className="text-xs text-gray-500 mt-0.5 mb-4">{META_STEPS[metaStep].desc}</p>
+      {error && (
+        <div className="mt-3 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <AlertCircle size={13} /> {error}
+        </div>
+      )}
 
-            {metaStep === 1 && (
-              <div className="space-y-1.5 mb-4 text-xs text-gray-600">
-                {[['Company', data.companyName || '—'], ['Website', data.website || '—'], ['Industry', data.industry || '—']].map(([k, v]) => (
-                  <div key={k} className="flex justify-between">
-                    <span className="text-gray-400">{k}</span>
-                    <span className="font-medium">{v}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {metaStep === 3 && (
-              <input
-                type="tel"
-                placeholder="+91 98765 43210"
-                value={phone}
-                maxLength={10}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white mb-4"
-              />
-            )}
-
-            {metaStep === 4 && (
-              <div className="flex gap-2 justify-center mb-4">
-                {otp.map((digit, i) => (
-                  <input
-                    key={i}
-                    id={`otp-${i}`}
-                    type="text"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleOtp(i, e.target.value)}
-                    className="w-11 h-11 text-center text-lg font-bold border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-                  />
-                ))}
-              </div>
-            )}
-
-            {metaStep === 5 && (
-              <div className="flex items-center gap-2 text-xs text-gray-500 mb-4">
-                <Loader2 size={13} className="animate-spin text-green-500" />
-                Configuring webhooks automatically…
-              </div>
-            )}
-
-            <motion.button
-              whileTap={{ scale: 0.97 }}
-              onClick={advance}
-              disabled={loading || !canAdvance}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1), opacity 120ms ease' }}
-            >
-              {loading && <Loader2 size={13} className="animate-spin" />}
-              {loading ? 'Connecting…' : META_STEPS[metaStep].action}
-            </motion.button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="mt-6 flex justify-between">
-        <StepBtn onClick={onBack} variant="ghost">Back</StepBtn>
-        <StepBtn onClick={onNext} disabled={!isComplete}>
-          Continue <ChevronRight size={15} />
-        </StepBtn>
+      <div className="mt-6 flex justify-end">
+        <Btn onClick={handleConnect} disabled={!valid} loading={saving}>
+          {saving ? 'Connecting…' : 'Connect & Finish'}
+          {!saving && <Check size={14} />}
+        </Btn>
       </div>
     </div>
   )
 }
 
-function InviteTeam({ onNext, onBack }) {
-  const [emails, setEmails] = useState([{ email: '', role: 'agent' }])
+/* ─── Main wizard ──────────────────────────────────────────── */
 
-  const update = (i, field, val) => {
-    const next = emails.map((e, idx) => idx === i ? { ...e, [field]: val } : e)
-    setEmails(next)
+export default function OnboardingWizard() {
+  const { setOnboarded, updateUser } = useAuthStore()
+  const [step,        setStep]     = useState(0)
+  const [dir,         setDir]      = useState(1)
+  const [done,        setDone]     = useState(false)
+  const [bizData,     setBizData]  = useState(null)
+  const [bizName,     setBizName]  = useState('')
+  const [completing,  setCompleting] = useState(false)
+
+  const handleBizNext = (data) => {
+    setBizData(data)
+    setDir(1)
+    setStep(1)
+  }
+
+  const handleFinish = async (displayName) => {
+    setCompleting(true)
+    try {
+      await axiosInstance.post('/api/v1/profile/complete-onboarding')
+    } catch {}
+    setBizName(displayName || bizData?.businessName || 'Your business')
+    setDone(true)
+    setCompleting(false)
+  }
+
+  const handleEnterDashboard = () => {
+    setOnboarded()
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">Invite Team</h2>
-        <p className="text-sm text-gray-500 mt-1">Optional — you can do this later in Settings</p>
-      </div>
-      <div className="space-y-2">
-        <AnimatePresence initial={false}>
-          {emails.map((item, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2, ease: EASE_OUT }}
-              className="flex gap-2"
-            >
-              <input
-                type="email"
-                placeholder="teammate@company.com"
-                value={item.email}
-                onChange={(e) => update(i, 'email', e.target.value)}
-                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-              <select
-                value={item.role}
-                onChange={(e) => update(i, 'role', e.target.value)}
-                className="px-2 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
-              >
-                <option value="agent">Agent</option>
-                <option value="admin">Admin</option>
-              </select>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          onClick={() => setEmails([...emails, { email: '', role: 'agent' }])}
-          className="text-xs text-green-600 hover:text-green-700 font-medium mt-1"
-        >
-          + Add another
-        </motion.button>
-      </div>
-      <div className="mt-6 flex justify-between">
-        <StepBtn onClick={onBack} variant="ghost">Back</StepBtn>
-        <div className="flex gap-2">
-          <StepBtn onClick={onNext} variant="ghost">Skip</StepBtn>
-          <StepBtn onClick={onNext}>
-            Send Invites <ChevronRight size={15} />
-          </StepBtn>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export default function OnboardingWizard() {
-  const { setOnboarded } = useAuthStore()
-  const [step, setStep] = useState(0)
-  const [dir, setDir] = useState(1)
-  const [formData, setFormData] = useState({})
-
-  const goNext = () => { setDir(1); setStep((s) => s + 1) }
-  const goBack = () => { setDir(-1); setStep((s) => s - 1) }
-
-  const steps = [
-    <BusinessDetails data={formData} onChange={setFormData} onNext={goNext} />,
-    <ChoosePlan data={formData} onChange={setFormData} onNext={goNext} onBack={goBack} />,
-    <ConnectWhatsApp data={formData} onChange={setFormData} onNext={goNext} onBack={goBack} />,
-    <InviteTeam onNext={goNext} onBack={goBack} />,
-  ]
-
-  const isDone = step >= steps.length
-
-  return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Blurred backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-md" />
 
-      {/* Modal */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.35, ease: EASE_OUT }}
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.32, ease: EASE_OUT }}
         className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
       >
-        {!isDone ? (
+        {!done ? (
           <>
-            {/* Step indicator header */}
+            {/* Step header */}
             <div className="px-6 pt-5 pb-4 border-b border-gray-100">
               <div className="flex items-center gap-1">
                 {STEP_META.map((s, i) => (
                   <div key={s.id} className="flex items-center gap-1 flex-1">
                     <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors duration-200"
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
                       style={{
-                        backgroundColor: i < step ? '#16a34a' : i === step ? '#16a34a' : '#f3f4f6',
+                        backgroundColor: i <= step ? '#16a34a' : '#f3f4f6',
                         color: i <= step ? '#fff' : '#9ca3af',
-                        transition: 'background-color 200ms ease, color 200ms ease',
+                        transition: 'background-color 220ms ease, color 220ms ease',
                       }}
                     >
                       {i < step ? <Check size={11} /> : i + 1}
                     </div>
                     {i < STEP_META.length - 1 && (
                       <div
-                        className="h-px flex-1 rounded-full transition-colors duration-300"
-                        style={{ backgroundColor: i < step ? '#16a34a' : '#e5e7eb' }}
+                        className="h-px flex-1 mx-1 rounded-full"
+                        style={{
+                          backgroundColor: i < step ? '#16a34a' : '#e5e7eb',
+                          transition: 'background-color 300ms ease',
+                        }}
                       />
                     )}
                   </div>
                 ))}
-                <span className="ml-2 text-xs text-gray-400 shrink-0">{step + 1}/{steps.length}</span>
+                <span className="ml-2 text-xs text-gray-400 shrink-0">{step + 1}/{STEP_META.length}</span>
+              </div>
+
+              {/* Labels */}
+              <div className="flex mt-2">
+                {STEP_META.map((s, i) => (
+                  <div key={s.id} className="flex-1">
+                    <p className={`text-xs font-medium ${i === step ? 'text-green-700' : i < step ? 'text-green-500' : 'text-gray-400'}`}>
+                      {s.label}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -479,43 +417,63 @@ export default function OnboardingWizard() {
                 <motion.div
                   key={step}
                   custom={dir}
-                  initial={(d) => ({ opacity: 0, x: d * 32 })}
+                  initial={(d) => ({ opacity: 0, x: d * 28 })}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={(d) => ({ opacity: 0, x: d * -32 })}
-                  transition={{ duration: 0.22, ease: EASE_OUT }}
+                  exit={(d) => ({ opacity: 0, x: d * -28 })}
+                  transition={{ duration: 0.2, ease: EASE_OUT }}
                 >
-                  {steps[step]}
+                  {step === 0 && <BusinessDetails onNext={handleBizNext} />}
+                  {step === 1 && <ConnectWhatsApp bizData={bizData} onFinish={handleFinish} />}
                 </motion.div>
               </AnimatePresence>
             </div>
           </>
         ) : (
-          /* Completion screen */
+          /* Completion */
           <div className="px-6 py-10 text-center">
             <motion.div
               initial={{ scale: 0.5, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', duration: 0.55, bounce: 0.28 }}
+              transition={{ type: 'spring', duration: 0.5, bounce: 0.3 }}
               className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4"
             >
               <CheckCircle2 size={32} className="text-green-600" />
             </motion.div>
+
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.18, duration: 0.25, ease: EASE_OUT }}
+              transition={{ delay: 0.2, duration: 0.25, ease: EASE_OUT }}
             >
               <h2 className="text-xl font-semibold text-gray-900">You're all set!</h2>
-              <p className="text-sm text-gray-500 mt-1 mb-6">
-                {formData.companyName || 'Your business'} is ready to automate WhatsApp
+              <p className="text-sm text-gray-500 mt-1 mb-2">
+                <span className="font-semibold text-gray-800">{bizName}</span> is ready on WhatsApp
               </p>
+              <p className="text-xs text-gray-400 mb-6">
+                Start by sending a test message or importing your contacts.
+              </p>
+
+              <div className="grid grid-cols-3 gap-2 mb-6">
+                {[
+                  ['Policy', 'Compliant'],
+                  ['Status', 'Connected'],
+                  ['Inbox', 'Ready'],
+                ].map(([label, val]) => (
+                  <div key={label} className="bg-gray-50 rounded-xl p-2.5 border border-gray-100">
+                    <p className="text-xs text-gray-400">{label}</p>
+                    <p className="text-sm font-semibold text-green-700 mt-0.5">{val}</p>
+                  </div>
+                ))}
+              </div>
+
               <motion.button
                 whileTap={{ scale: 0.97 }}
-                onClick={setOnboarded}
-                className="px-7 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg"
+                onClick={handleEnterDashboard}
+                disabled={completing}
+                className="px-7 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg disabled:opacity-50"
                 style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
               >
-                Enter Dashboard
+                Enter Dashboard →
               </motion.button>
             </motion.div>
           </div>

@@ -1,7 +1,7 @@
-const mongoose = require('mongoose')
 const Conversation = require('../models/Conversation')
 const Message = require('../models/Message')
 const Contact = require('../models/Contact')
+const Tenant  = require('../models/Tenant')
 const { getIO } = require('../config/socket')
 const asyncHandler = require('../utils/asyncHandler')
 const { success } = require('../utils/apiResponse')
@@ -26,7 +26,6 @@ const getConversations = asyncHandler(async (req, res) => {
     .populate('assignee', 'name avatar')
     .lean()
 
-  // Apply search on contact name
   const filtered = search
     ? conversations.filter(c => c.contact?.name?.toLowerCase().includes(search.toLowerCase()))
     : conversations
@@ -40,7 +39,6 @@ const getMessages = asyncHandler(async (req, res) => {
   const conv = await Conversation.findOne({ _id: req.params.id, tenant: req.tenantId })
   if (!conv) return res.status(404).json({ success: false, message: 'Conversation not found' })
 
-  // Mark as read
   await Conversation.findByIdAndUpdate(req.params.id, { unreadCount: 0 })
 
   const messages = await Message.find({ conversation: req.params.id })
@@ -62,14 +60,43 @@ const sendMessage = asyncHandler(async (req, res) => {
   let waMessageId = null
   let status = 'sent'
 
-  // Only call WhatsApp for real outgoing messages (not notes)
   if (type === 'agent') {
+    // Enforce Meta 24-hour messaging window — free-form messages only allowed within window
+    const windowOpen = conv.window?.open && conv.window?.expiresAt && new Date(conv.window.expiresAt) > new Date()
+
+    // Sync expired window flag
+    if (conv.window?.open && !windowOpen) {
+      await Conversation.findByIdAndUpdate(conv._id, { 'window.open': false })
+    }
+
+    if (!windowOpen) {
+      return res.status(422).json({
+        success: false,
+        message: 'The 24-hour messaging window has expired. You must use an approved WhatsApp template to re-engage this contact.',
+        code: 'WINDOW_EXPIRED',
+      })
+    }
+
+    // Check tenant message usage limit
+    const tenant = await Tenant.findById(req.tenantId).select('limits usage').lean()
+    if (tenant.usage.messages >= tenant.limits.messages) {
+      return res.status(429).json({
+        success: false,
+        message: `Message limit reached (${tenant.limits.messages}). Upgrade your plan to send more.`,
+        code: 'LIMIT_REACHED',
+      })
+    }
+
     try {
       const result = await waService.sendTextMessage({ to: conv.contact.phone, text })
       waMessageId = result.messageId
       status = result.status
-    } catch (err) {
+    } catch {
       status = 'failed'
+    }
+
+    if (status !== 'failed') {
+      await Tenant.findByIdAndUpdate(req.tenantId, { $inc: { 'usage.messages': 1 } })
     }
   }
 
@@ -86,13 +113,11 @@ const sendMessage = asyncHandler(async (req, res) => {
 
   const populated = await message.populate('sentBy', 'name avatar')
 
-  // Update conversation last message
   await Conversation.findByIdAndUpdate(conv._id, {
     lastMessage: { text, type, time: new Date() },
     updatedAt: new Date(),
   })
 
-  // Emit to all clients in this conversation room
   getIO().to(`conv:${conv._id}`).emit('new_message', { message: populated })
 
   return success(res, { message: populated }, 'Message sent', 201)
@@ -116,7 +141,7 @@ const updateConversation = asyncHandler(async (req, res) => {
   return success(res, { conversation: conv }, 'Conversation updated')
 })
 
-// DEV ONLY — POST /api/v1/dev/simulate-incoming
+// DEV ONLY — POST /api/v1/conversations/dev/simulate-incoming
 const simulateIncoming = asyncHandler(async (req, res) => {
   if (process.env.NODE_ENV === 'production') {
     return res.status(403).json({ success: false, message: 'Not available in production' })
@@ -125,18 +150,16 @@ const simulateIncoming = asyncHandler(async (req, res) => {
   const { phone, message: text, name: contactName } = req.body
   if (!phone || !text) return res.status(400).json({ success: false, message: 'phone and message are required' })
 
-  // Find or create contact
   let contact = await Contact.findOne({ tenant: req.tenantId, phone })
   if (!contact) {
     contact = await Contact.create({
       tenant: req.tenantId,
       phone,
-      name: contactName || `+${phone.replace(/\D/g, '')}`,
+      name: contactName || phone,
       source: 'organic',
     })
   }
 
-  // Find or create conversation
   let conv = await Conversation.findOne({ tenant: req.tenantId, contact: contact._id, status: 'open' })
   if (!conv) {
     conv = await Conversation.create({
@@ -160,14 +183,12 @@ const simulateIncoming = asyncHandler(async (req, res) => {
     lastMessage: { text, type: 'customer', time: new Date() },
     $inc: { unreadCount: 1 },
     updatedAt: new Date(),
+    'window.open': true,
+    'window.expiresAt': new Date(Date.now() + 24 * 60 * 60 * 1000),
   })
 
   const io = getIO()
-  io.to(`tenant:${req.tenantId}`).emit('new_conversation_message', {
-    conversationId: conv._id,
-    message: msg,
-    contact,
-  })
+  io.to(`tenant:${req.tenantId}`).emit('new_conversation_message', { conversationId: conv._id, message: msg, contact })
   io.to(`conv:${conv._id}`).emit('new_message', { message: msg })
 
   return success(res, { message: msg, conversation: conv, contact }, 'Incoming message simulated')

@@ -13,6 +13,9 @@ const { errorHandler, notFound } = require('./middleware/error.middleware')
 
 const app = express()
 
+// Trust proxy — required when running behind Render/ngrok/reverse proxy
+app.set('trust proxy', 1)
+
 // Security headers
 app.use(helmet())
 
@@ -24,8 +27,15 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }))
 
-// Body parsers — limit size to prevent DoS
-app.use(express.json({ limit: '10kb' }))
+// Body parsers — capture raw body for Meta webhook signature verification
+app.use(express.json({
+  limit: '10kb',
+  verify: (req, res, buf) => {
+    if (req.path.startsWith('/api/v1/webhooks')) {
+      req.rawBody = buf
+    }
+  },
+}))
 app.use(express.urlencoded({ extended: true, limit: '10kb' }))
 
 // Sanitize MongoDB operators in req.body/params/query (NoSQL injection)
@@ -40,9 +50,11 @@ app.use(hpp())
 // Gzip responses
 app.use(compression())
 
-// Request logging in development
+// Request logging
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'))
+} else {
+  app.use(morgan('combined'))
 }
 
 // Static files (avatar uploads etc.)

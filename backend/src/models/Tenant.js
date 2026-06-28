@@ -6,8 +6,11 @@ const tenantSchema = new mongoose.Schema(
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
     whatsapp: {
-      phoneNumber: { type: String, trim: true },
-      displayName: { type: String, trim: true },
+      phoneNumber:   { type: String, trim: true },
+      displayName:   { type: String, trim: true },
+      phoneNumberId: { type: String, trim: true },
+      wabaId:        { type: String, trim: true },
+      accessToken:   { type: String, select: false }, // never returned by default
       status: {
         type: String,
         enum: ['connected', 'disconnected', 'pending'],

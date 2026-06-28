@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
 } from 'lucide-react'
 import PageHeader from '../../../components/layout/PageHeader'
+import api from '../../../api/axios'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
 
@@ -44,75 +45,69 @@ const STATUS_STYLE = {
   rejected: { icon: XCircle,      color: 'text-red-500',    bg: 'bg-red-50 text-red-600 border-red-200',        label: 'Rejected' },
 }
 
-/* ─── Demo data ─────────────────────────────────────────── */
+/* ─── API helpers ────────────────────────────────────────── */
 
-const SEED = [
-  {
-    id: 1, name: 'summer_sale_announcement', category: 'marketing', language: 'English', status: 'approved',
-    header: { type: 'image', text: '', url: '' },
-    body: "Hi {{1}}! 🛍️ Don't miss our Summer Sale — up to *50% off* on all products. Shop now before it ends!\n\nUse code: *SUMMER50*",
-    footer: 'Valid till June 30, 2025',
-    buttons: [{ type: 'url', label: 'Shop Now', value: 'https://store.example.com' }, { type: 'quick_reply', label: 'Remind Me', value: '' }],
-    updatedAt: '2 days ago', usedIn: 3,
-  },
-  {
-    id: 2, name: 'order_confirmation', category: 'utility', language: 'English', status: 'approved',
-    header: { type: 'text', text: 'Order Confirmed ✅', url: '' },
-    body: "Hi {{1}}, your order *#{{2}}* has been confirmed! 🎉\n\nEstimated delivery: *{{3}}*\n\nThank you for shopping with us.",
-    footer: 'Track your order on our app.',
-    buttons: [{ type: 'url', label: 'Track Order', value: 'https://track.example.com' }],
-    updatedAt: '5 days ago', usedIn: 8,
-  },
-  {
-    id: 3, name: 'otp_verification', category: 'authentication', language: 'English', status: 'approved',
-    header: { type: 'none', text: '', url: '' },
-    body: "Your verification code is *{{1}}*.\n\nThis code expires in 10 minutes. Do not share this with anyone.",
-    footer: '',
-    buttons: [{ type: 'quick_reply', label: 'Copy Code', value: '' }],
-    updatedAt: '1 week ago', usedIn: 24,
-  },
-  {
-    id: 4, name: 'vip_early_access', category: 'marketing', language: 'English', status: 'approved',
-    header: { type: 'image', text: '', url: '' },
-    body: "Hi {{1}} 👑 As a VIP member, you get *exclusive early access* to our new collection starting {{2}}.\n\nYour special discount: *{{3}}*",
-    footer: 'VIP members only',
-    buttons: [{ type: 'url', label: 'View Collection', value: 'https://vip.example.com' }, { type: 'call', label: 'Call Us', value: '+919876543210' }],
-    updatedAt: '1 week ago', usedIn: 1,
-  },
-  {
-    id: 5, name: 'monthly_newsletter', category: 'marketing', language: 'English', status: 'pending',
-    header: { type: 'document', text: '', url: '' },
-    body: "Hello {{1}} 📰\n\nHere's our *June Newsletter* — latest updates, product news, and exclusive offers inside!",
-    footer: 'Unsubscribe anytime.',
-    buttons: [{ type: 'url', label: 'Read Newsletter', value: 'https://news.example.com' }],
-    updatedAt: '1 day ago', usedIn: 0,
-  },
-  {
-    id: 6, name: 'shipping_update', category: 'utility', language: 'English', status: 'draft',
-    header: { type: 'text', text: 'Shipping Update 🚚', url: '' },
-    body: "Hi {{1}}, your order *#{{2}}* is out for delivery!\n\nExpected by *{{3}}*. Please keep your phone handy.",
-    footer: '',
-    buttons: [{ type: 'call', label: 'Call Delivery', value: '+919876543210' }],
-    updatedAt: '3 hours ago', usedIn: 0,
-  },
-  {
-    id: 7, name: 'account_update_notice', category: 'utility', language: 'Hindi', status: 'draft',
-    header: { type: 'none', text: '', url: '' },
-    body: "नमस्ते {{1}},\n\nआपके अकाउंट में बदलाव किया गया है। अगर यह आपने नहीं किया, तो तुरंत हमसे संपर्क करें।",
-    footer: 'SarnConnect Support',
-    buttons: [{ type: 'call', label: 'Call Support', value: '+919876543210' }],
-    updatedAt: '5 hours ago', usedIn: 0,
-  },
-  {
-    id: 8, name: 'flash_weekend_promo', category: 'marketing', language: 'English', status: 'rejected',
-    header: { type: 'image', text: '', url: '' },
-    body: "HURRY UP! {{1}} — MASSIVE DISCOUNTS this weekend only! BUY NOW before stocks run out!!!",
-    footer: '',
-    buttons: [{ type: 'url', label: 'BUY NOW', value: 'https://store.example.com' }],
-    updatedAt: '3 days ago', usedIn: 0,
-    rejectionReason: 'Template body is too promotional with excessive capitalisation and multiple exclamation marks. Please revise to a more conversational tone.',
-  },
-]
+const LANG_TO_CODE = { English: 'en', Hindi: 'hi', Gujarati: 'gu', Marathi: 'mr', Tamil: 'ta', Telugu: 'te', Kannada: 'kn', Bengali: 'bn' }
+const CODE_TO_LANG = Object.fromEntries(Object.entries(LANG_TO_CODE).map(([k, v]) => [v, k]))
+const MEDIA_TYPES  = ['IMAGE', 'VIDEO', 'DOCUMENT']
+
+function flatToComponents(form) {
+  const comps = []
+  if (form.header?.type && form.header.type !== 'none') {
+    comps.push({ type: 'HEADER', text: form.header.type === 'text' ? (form.header.text || '') : form.header.type.toUpperCase() })
+  }
+  if (form.body)   comps.push({ type: 'BODY', text: form.body })
+  if (form.footer) comps.push({ type: 'FOOTER', text: form.footer })
+  if (form.buttons?.length) {
+    comps.push({
+      type: 'BUTTONS',
+      buttons: form.buttons.map((b) => ({
+        type: b.type === 'url' ? 'URL' : b.type === 'call' ? 'PHONE_NUMBER' : 'QUICK_REPLY',
+        text: b.label,
+        url: b.type === 'url' ? b.value : undefined,
+        phoneNumber: b.type === 'call' ? b.value : undefined,
+      })),
+    })
+  }
+  return comps
+}
+
+function componentsToFlat(components = []) {
+  const h  = components.find((c) => c.type === 'HEADER')
+  const b  = components.find((c) => c.type === 'BODY')
+  const f  = components.find((c) => c.type === 'FOOTER')
+  const bt = components.find((c) => c.type === 'BUTTONS')
+  let header = { type: 'none', text: '', url: '' }
+  if (h) {
+    const isMedia = MEDIA_TYPES.includes((h.text || '').toUpperCase())
+    header = { type: isMedia ? h.text.toLowerCase() : 'text', text: isMedia ? '' : (h.text || ''), url: '' }
+  }
+  return {
+    header,
+    body: b?.text || '',
+    footer: f?.text || '',
+    buttons: bt?.buttons?.map((btn) => ({
+      type: btn.type === 'URL' ? 'url' : btn.type === 'PHONE_NUMBER' ? 'call' : 'quick_reply',
+      label: btn.text || '',
+      value: btn.url || btn.phoneNumber || '',
+    })) || [],
+  }
+}
+
+function normalizeTemplate(t) {
+  const { header, body, footer, buttons } = componentsToFlat(t.components || [])
+  return {
+    id: t._id || t.id,
+    name: t.name,
+    category: (t.category || 'MARKETING').toLowerCase(),
+    language: CODE_TO_LANG[t.language] || t.language || 'English',
+    status: (t.status || 'DRAFT').toLowerCase(),
+    header, body, footer, buttons,
+    updatedAt: t.updatedAt ? new Date(t.updatedAt).toLocaleDateString() : '',
+    usedIn: t.usageCount || 0,
+    rejectionReason: t.rejectionReason || null,
+  }
+}
 
 /* ─── Variable inserter ──────────────────────────────────── */
 
@@ -701,7 +696,8 @@ function TemplateCard({ t, index, onEdit, onDuplicate, onDelete, onSubmit }) {
 /* ─── Main ───────────────────────────────────────────────── */
 
 export default function Templates() {
-  const [templates,   setTemplates]   = useState(SEED)
+  const [templates,   setTemplates]   = useState([])
+  const [loading,     setLoading]     = useState(true)
   const [statusTab,   setStatusTab]   = useState('all')
   const [search,      setSearch]      = useState('')
   const [drawerOpen,  setDrawerOpen]  = useState(false)
@@ -709,6 +705,19 @@ export default function Templates() {
   const [toast,       setToast]       = useState(null)
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3200) }
+
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const { data } = await api.get('/api/v1/templates?limit=100')
+      setTemplates((data.data?.templates || []).map(normalizeTemplate))
+    } catch {
+      showToast('Failed to load templates.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchTemplates() }, [fetchTemplates])
 
   /* Filtered list */
   const filtered = templates.filter((t) => {
@@ -724,33 +733,72 @@ export default function Templates() {
   }, {})
 
   /* CRUD */
-  const handleSave = (form) => {
-    if (editTarget) {
-      setTemplates((ts) => ts.map((t) => t.id === editTarget.id ? { ...editTarget, ...form, updatedAt: 'Just now' } : t))
-      showToast(form.status === 'pending' ? 'Template submitted for approval.' : 'Template saved as draft.')
-    } else {
-      const newT = { ...form, id: Date.now(), updatedAt: 'Just now', usedIn: 0 }
-      setTemplates((ts) => [newT, ...ts])
-      showToast(form.status === 'pending' ? 'Template submitted for approval.' : 'Template saved as draft.')
+  const handleSave = async (form) => {
+    const payload = {
+      name: form.name,
+      category: form.category.toUpperCase(),
+      language: LANG_TO_CODE[form.language] || 'en',
+      components: flatToComponents(form),
+    }
+    try {
+      let saved
+      if (editTarget) {
+        const { data } = await api.put(`/api/v1/templates/${editTarget.id}`, payload)
+        saved = normalizeTemplate(data.data.template)
+        setTemplates((ts) => ts.map((t) => t.id === editTarget.id ? saved : t))
+      } else {
+        const { data } = await api.post('/api/v1/templates', payload)
+        saved = normalizeTemplate(data.data.template)
+        setTemplates((ts) => [saved, ...ts])
+      }
+      if (form.status === 'pending') {
+        await api.post(`/api/v1/templates/${saved.id}/submit`)
+        setTemplates((ts) => ts.map((t) => t.id === saved.id ? { ...t, status: 'pending' } : t))
+        showToast('Template submitted for Meta approval.')
+      } else {
+        showToast('Template saved as draft.')
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to save template.')
     }
     setEditTarget(null)
     setDrawerOpen(false)
   }
 
-  const handleDuplicate = (t) => {
-    const dup = { ...t, id: Date.now(), name: `${t.name}_copy`, status: 'draft', updatedAt: 'Just now', usedIn: 0, header: { ...t.header }, buttons: t.buttons.map((b) => ({ ...b })) }
-    setTemplates((ts) => [dup, ...ts])
-    showToast('Template duplicated as draft.')
+  const handleDuplicate = async (t) => {
+    const payload = {
+      name: `${t.name}_copy`,
+      category: t.category.toUpperCase(),
+      language: LANG_TO_CODE[t.language] || 'en',
+      components: flatToComponents(t),
+    }
+    try {
+      const { data } = await api.post('/api/v1/templates', payload)
+      setTemplates((ts) => [normalizeTemplate(data.data.template), ...ts])
+      showToast('Template duplicated as draft.')
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to duplicate template.')
+    }
   }
 
-  const handleDelete = (id) => {
-    setTemplates((ts) => ts.filter((t) => t.id !== id))
-    showToast('Template deleted.')
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/api/v1/templates/${id}`)
+      setTemplates((ts) => ts.filter((t) => t.id !== id))
+      showToast('Template deleted.')
+    } catch {
+      showToast('Failed to delete template.')
+    }
   }
 
-  const handleSubmit = (id) => {
-    setTemplates((ts) => ts.map((t) => t.id === id ? { ...t, status: 'pending', updatedAt: 'Just now' } : t))
-    showToast('Template submitted for Meta approval.')
+  const handleSubmit = async (id) => {
+    try {
+      await api.post(`/api/v1/templates/${id}/submit`)
+      setTemplates((ts) => ts.map((t) => t.id === id ? { ...t, status: 'pending' } : t))
+      showToast('Template submitted for Meta approval.')
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to submit template.')
+    }
   }
 
   const openCreate = () => { setEditTarget(null); setDrawerOpen(true) }
@@ -836,6 +884,10 @@ export default function Templates() {
               />
             ))}
           </AnimatePresence>
+        </div>
+      ) : loading ? (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-300 gap-2">
+          <p className="text-sm">Loading templates…</p>
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-16 text-gray-300 gap-2">
