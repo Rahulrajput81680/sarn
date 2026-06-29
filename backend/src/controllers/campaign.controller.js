@@ -88,13 +88,38 @@ const sendCampaign = asyncHandler(async (req, res) => {
 
   // Process in background — replace with BullMQ for high-volume production use
   setImmediate(async () => {
-    let sent = 0, failed = 0
+    let sent = 0, failed = 0, firstError = null
+
+    // Build a variable lookup from the campaign's stored mapping (Mongoose Map → plain Map)
+    const varMap = campaign.variables instanceof Map
+      ? campaign.variables
+      : new Map(Object.entries(campaign.variables?.toObject?.() || campaign.variables || {}))
+
     for (const contact of contacts) {
       try {
+        // Build Meta API components array to satisfy template parameter requirements.
+        // Each {{N}} placeholder in the body must have a matching parameter value.
+        const metaComponents = []
+        for (const comp of (campaign.template.components || [])) {
+          if (comp.type === 'BODY') {
+            const placeholders = [...new Set((comp.text || '').match(/\{\{(\d+)\}\}/g) || [])]
+              .map(m => m.replace(/[{}]/g, ''))
+            if (placeholders.length > 0) {
+              const parameters = placeholders.map((name, idx) => ({
+                type: 'text',
+                // Use campaign variable mapping; fall back to contact name for {{1}} so messages aren't blank
+                text: varMap.get(name) || (idx === 0 ? contact.name : String(idx + 1)),
+              }))
+              metaComponents.push({ type: 'body', parameters })
+            }
+          }
+        }
+
         const result = await waService.sendTemplateMessage({
           to: contact.phone,
           templateName: campaign.template.name,
           language: campaign.template.language,
+          components: metaComponents,
         })
         sent++
 
@@ -112,8 +137,12 @@ const sendCampaign = asyncHandler(async (req, res) => {
         }
 
         await Contact.findByIdAndUpdate(contact._id, { lastContactDate: new Date(), $inc: { messageCount: 1 } })
-      } catch {
+      } catch (err) {
         failed++
+        const metaErr = err.response?.data?.error
+        const errMsg = metaErr?.message || (typeof metaErr === 'string' ? metaErr : null) || err.message || 'Unknown error'
+        if (!firstError) firstError = errMsg
+        console.error(`[Campaign] Failed to send to ${contact.phone}:`, JSON.stringify(metaErr || err.message))
       }
       await new Promise(r => setTimeout(r, 50))
     }
@@ -124,6 +153,7 @@ const sendCampaign = asyncHandler(async (req, res) => {
       completedAt: new Date(),
       'stats.sent': sent,
       'stats.failed': failed,
+      ...(firstError ? { 'stats.lastError': firstError } : {}),
     })
 
     await Tenant.findByIdAndUpdate(req.tenantId, { $inc: { 'usage.messages': sent } })

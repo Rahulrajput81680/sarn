@@ -35,6 +35,7 @@ const campaignSchema = new mongoose.Schema(
       read:      { type: Number, default: 0 },
       failed:    { type: Number, default: 0 },
       optedOut:  { type: Number, default: 0 },
+      lastError: { type: String, default: null },
     },
     startedAt:   { type: Date, default: null },
     completedAt: { type: Date, default: null },

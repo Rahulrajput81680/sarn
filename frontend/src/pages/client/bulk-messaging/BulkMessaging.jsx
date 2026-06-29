@@ -43,6 +43,7 @@ function normalizeCampaign(c) {
     delivered: c.stats?.delivered || 0,
     read: c.stats?.read || 0,
     failed: c.stats?.failed || 0,
+    lastError: c.stats?.lastError || null,
     date: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
     status: statusMap[c.status] || c.status,
   }
@@ -186,32 +187,69 @@ function StepTemplate({ selected, onSelect, onNext, varMapping, onVarMapping, te
 /* ─── Step 2: Recipients ────────────────────────────────── */
 
 function StepRecipients({ data, onChange, onNext, onBack, segments }) {
-  const [tab, setTab] = useState('upload')
+  const [tab, setTab] = useState(data.tab || 'upload')
   const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState(data.file || null)
   const [manual, setManual] = useState(data.manual || '')
   const [segment, setSegment] = useState(data.segment || '')
   const [validated, setValidated] = useState(data.validated || false)
+  const [validResult, setValidResult] = useState(data.validResult || null)
   const fileRef = useRef()
 
   const handleDrop = (e) => {
     e.preventDefault()
     setDragging(false)
     const f = e.dataTransfer.files[0]
-    if (f) { setFile(f); setValidated(false) }
+    if (f) { setFile(f); setValidated(false); setValidResult(null) }
   }
 
   const handleFile = (e) => {
     const f = e.target.files[0]
-    if (f) { setFile(f); setValidated(false) }
+    if (f) { setFile(f); setValidated(false); setValidResult(null) }
   }
 
-  const simulate = () => {
+  // ── Real validation — no fake numbers ────────────────────
+  const validate = () => {
+    let result = { valid: 0, duplicates: 0, invalid: 0, total: 0, phones: [] }
+
+    if (tab === 'manual') {
+      const lines = manual.split('\n').map(l => l.trim()).filter(Boolean)
+      const seen = new Set()
+      lines.forEach(raw => {
+        const cleaned = raw.replace(/[\s\-().]/g, '')
+        const phone = cleaned.startsWith('+') ? cleaned : `+${cleaned}`
+        const isValid = /^\+\d{7,15}$/.test(phone)
+        if (!isValid) {
+          result.invalid++
+        } else if (seen.has(phone)) {
+          result.duplicates++
+        } else {
+          seen.add(phone)
+          result.valid++
+          result.phones.push(phone)
+        }
+      })
+      result.total = lines.length
+
+    } else if (tab === 'segment') {
+      const match = segment.match(/\((\d[\d,]*)\)/)
+      const count = match ? parseInt(match[1].replace(/,/g, '')) : 0
+      result.valid = count
+      result.total = count
+
+    } else if (tab === 'upload') {
+      result.valid = 0
+      result.total = 0
+    }
+
+    setValidResult(result)
     setValidated(true)
-    onChange({ ...data, file, manual, segment, validated: true, count: 1284 })
+    onChange({ ...data, file, manual, segment, tab, validated: true, count: result.valid, phones: result.phones, validResult: result })
   }
 
-  const hasInput = file || manual.trim() || segment
+  const hasInput = (tab === 'manual' && manual.trim()) ||
+                   (tab === 'segment' && segment) ||
+                   (tab === 'upload' && file)
 
   return (
     <div>
@@ -222,7 +260,7 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
         {[['upload', 'CSV / Excel'], ['manual', 'Manual'], ['segment', 'Segment']].map(([key, label]) => (
           <button
             key={key}
-            onClick={() => setTab(key)}
+            onClick={() => { setTab(key); setValidated(false); setValidResult(null) }}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-150 ${
               tab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}
@@ -256,7 +294,7 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
                 <div className="flex items-center justify-center gap-2">
                   <FileText size={14} className="text-green-600" />
                   <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                  <button onClick={(e) => { e.stopPropagation(); setFile(null); setValidated(false) }}>
+                  <button onClick={(e) => { e.stopPropagation(); setFile(null); setValidated(false); setValidResult(null) }}>
                     <X size={13} className="text-gray-400 hover:text-gray-600" />
                   </button>
                 </div>
@@ -281,12 +319,12 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
           >
             <textarea
               value={manual}
-              onChange={(e) => { setManual(e.target.value); setValidated(false) }}
+              onChange={(e) => { setManual(e.target.value); setValidated(false); setValidResult(null) }}
               placeholder={`+91 98765 43210\n+91 87654 32109\n+91 76543 21098`}
               rows={6}
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 font-mono resize-none"
             />
-            <p className="text-xs text-gray-400 mt-1">One phone number per line, with country code</p>
+            <p className="text-xs text-gray-400 mt-1">One phone number per line, with country code (e.g. +91...)</p>
           </motion.div>
         )}
 
@@ -302,7 +340,7 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
             {(segments || []).map((seg) => (
               <button
                 key={seg}
-                onClick={() => { setSegment(seg); setValidated(false) }}
+                onClick={() => { setSegment(seg); setValidated(false); setValidResult(null) }}
                 className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-colors duration-150 ${
                   segment === seg
                     ? 'border-green-500 bg-green-50 text-green-800 font-medium'
@@ -316,9 +354,9 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
         )}
       </AnimatePresence>
 
-      {/* Validation */}
+      {/* Real Validation Result */}
       <AnimatePresence>
-        {validated && (
+        {validated && validResult && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -327,26 +365,30 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
             className="mt-4 p-4 bg-white rounded-xl border border-gray-100 overflow-hidden"
           >
             <p className="text-xs font-semibold text-gray-700 mb-3">Audience Validation</p>
-            <div className="space-y-2">
-              {[
-                { label: 'Opted-in contacts',    value: '1,284', icon: Check,         color: 'text-green-600', bg: 'bg-green-50' },
-                { label: 'Duplicates removed',   value: '23',    icon: X,             color: 'text-amber-600', bg: 'bg-amber-50' },
-                { label: 'Invalid numbers',      value: '8',     icon: AlertTriangle, color: 'text-red-500',   bg: 'bg-red-50' },
-              ].map(({ label, value, icon: Icon, color, bg }) => (
-                <div key={label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`p-1 rounded-md ${bg}`}>
-                      <Icon size={11} className={color} />
-                    </span>
-                    <span className="text-xs text-gray-600">{label}</span>
+            {tab === 'upload' ? (
+              <p className="text-xs text-gray-500">CSV will be validated on the server when you send.</p>
+            ) : (
+              <div className="space-y-2">
+                {[
+                  { label: 'Valid recipients',  value: validResult.valid,      icon: Check,         color: 'text-green-600', bg: 'bg-green-50' },
+                  ...(validResult.duplicates > 0 ? [{ label: 'Duplicates removed', value: validResult.duplicates, icon: X, color: 'text-amber-600', bg: 'bg-amber-50' }] : []),
+                  ...(validResult.invalid > 0    ? [{ label: 'Invalid numbers',    value: validResult.invalid,    icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-50' }] : []),
+                ].map(({ label, value, icon: Icon, color, bg }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`p-1 rounded-md ${bg}`}>
+                        <Icon size={11} className={color} />
+                      </span>
+                      <span className="text-xs text-gray-600">{label}</span>
+                    </div>
+                    <span className={`text-xs font-semibold ${color}`}>{value.toLocaleString()}</span>
                   </div>
-                  <span className={`text-xs font-semibold ${color}`}>{value}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
             <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between">
               <span className="text-xs text-gray-500">Final recipient count</span>
-              <span className="text-sm font-bold text-gray-900">1,284</span>
+              <span className="text-sm font-bold text-gray-900">{validResult.valid.toLocaleString()}</span>
             </div>
           </motion.div>
         )}
@@ -356,11 +398,11 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
         <StepBtn onClick={onBack} variant="secondary"><ChevronLeft size={15} /> Back</StepBtn>
         <div className="flex gap-2">
           {!validated && hasInput && (
-            <StepBtn onClick={simulate} variant="secondary">
+            <StepBtn onClick={validate} variant="secondary">
               Validate Audience
             </StepBtn>
           )}
-          <StepBtn onClick={onNext} disabled={!validated}>
+          <StepBtn onClick={onNext} disabled={!validated || (validResult && validResult.valid === 0)}>
             Continue <ChevronRight size={15} />
           </StepBtn>
         </div>
@@ -573,6 +615,8 @@ export default function BulkMessaging() {
   const [campaigns,      setCampaigns]      = useState([])
   const [segments,       setSegments]       = useState(['All Contacts'])
   const [loadingData,    setLoadingData]    = useState(true)
+  const [refreshing,     setRefreshing]     = useState(false)
+  const [syncing,        setSyncing]        = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -592,6 +636,32 @@ export default function BulkMessaging() {
       ])
     }).catch(() => {}).finally(() => setLoadingData(false))
   }, [])
+
+  const refreshCampaignList = async () => {
+    setRefreshing(true)
+    try {
+      const r = await api.get('/api/v1/campaigns?limit=50')
+      setCampaigns((r.data.data?.campaigns || []).map(normalizeCampaign))
+    } catch {
+      toast.error('Failed to refresh campaigns.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const syncFromMeta = async () => {
+    setSyncing(true)
+    try {
+      const r = await api.post('/api/v1/templates/sync')
+      toast.success(`${r.data.data?.synced || 0} template(s) synced from Meta`)
+      const tRes = await api.get('/api/v1/templates?status=APPROVED&limit=100')
+      setTemplates((tRes.data.data?.templates || []).map(normalizeBulkTemplate))
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Template sync failed')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const goNext = () => { setDir(1); setStep((s) => s + 1) }
   const goBack = () => { setDir(-1); setStep((s) => s - 1) }
@@ -620,10 +690,11 @@ export default function BulkMessaging() {
       const { data: sData } = await api.post(`/api/v1/campaigns/${campaignId}/send`)
       setSentCount(sData.data.campaign?.total || 0)
 
-      // Refresh campaigns list
-      api.get('/api/v1/campaigns?limit=50')
-        .then((r) => setCampaigns((r.data.data?.campaigns || []).map(normalizeCampaign)))
-        .catch(() => {})
+      // Immediate refresh to show "Sending" in table
+      refreshCampaignList()
+      // Poll again at 2s and 5s — catches "completed" after background send finishes
+      setTimeout(refreshCampaignList, 2000)
+      setTimeout(refreshCampaignList, 5000)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to send campaign.')
       return
@@ -643,12 +714,12 @@ export default function BulkMessaging() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <PageHeader title="Bulk Messaging" description="Send template-based messages to large contact lists" />
         <motion.button
           whileTap={{ scale: 0.97 }}
           onClick={() => { setComposing(true); setSent(false) }}
-          className="flex items-center gap-2 px-4 py-2 bg-green-100 text-grey-200  shadow-sm shadow-green-500 border-2 border-green-400 text-sm font-medium rounded-lg shrink-0 hover:bg-white/45"
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-green-100 text-grey-200 shadow-sm shadow-green-500 border-2 border-green-400 text-sm font-medium rounded-lg shrink-0 hover:bg-white/45 w-full sm:w-auto"
           style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
         >
           <Plus size={15} /> New Campaign
@@ -739,7 +810,23 @@ export default function BulkMessaging() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <p className="text-sm font-semibold text-gray-900">Recent Campaigns</p>
-          <span className="text-xs text-gray-400">{campaigns.length} campaigns</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={syncFromMeta}
+              disabled={syncing}
+              title="Import all approved templates from Meta into this account"
+              className="text-xs px-2 py-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-40 transition-colors"
+            >{syncing ? 'Syncing…' : 'Sync Templates'}</button>
+            <button
+              onClick={refreshCampaignList}
+              disabled={refreshing}
+              title="Refresh campaign list"
+              className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-40 transition-colors"
+            >
+              <RotateCcw size={14} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+            <span className="text-xs text-gray-400">{campaigns.length} campaigns</span>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -787,8 +874,12 @@ export default function BulkMessaging() {
                   </td>
                   <td className="px-4 py-3.5">
                     {c.failed > 0 && (
-                      <button title="Retry failed" className="text-gray-400 hover:text-amber-500 transition-colors">
-                        <RotateCcw size={13} />
+                      <button
+                        title={c.lastError || 'Messages failed — click for details'}
+                        onClick={() => toast.error(c.lastError || 'Messages failed. Check that the template is approved by Meta and your token has messaging permissions.', { duration: 8000 })}
+                        className="text-red-400 hover:text-red-600 transition-colors"
+                      >
+                        <AlertTriangle size={13} />
                       </button>
                     )}
                   </td>

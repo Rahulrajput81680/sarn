@@ -133,20 +133,20 @@ export default function Profile() {
         transition={{ duration: 0.22, ease: EASE_OUT }}
         className="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
       >
-        <div className="flex items-center gap-5">
+        <div className="flex items-start sm:items-center gap-5">
           {/* Avatar */}
           <div className="relative shrink-0">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center overflow-hidden">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center overflow-hidden">
               {avatar
                 ? <img src={avatar} alt="avatar" className="w-full h-full object-cover" />
-                : <span className="text-white text-2xl font-bold">{initials}</span>
+                : <span className="text-white text-xl sm:text-2xl font-bold">{initials}</span>
               }
             </div>
             <button
               onClick={() => fileRef.current?.click()}
-              className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white border-2 border-green-300 flex items-center justify-center shadow hover:bg-green-50 transition-colors"
+              className="absolute bottom-0 right-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white border-2 border-green-300 flex items-center justify-center shadow hover:bg-green-50 transition-colors"
             >
-              <Camera size={11} className="text-green-600" />
+              <Camera size={10} className="text-green-600" />
             </button>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>

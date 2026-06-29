@@ -8,6 +8,7 @@ const Tenant   = require('../models/Tenant')
 const User     = require('../models/User')
 const WebhookLog = require('../models/WebhookLog')
 const { getIO } = require('../config/socket')
+const { handleTemplateStatusWebhook } = require('../controllers/template.controller')
 
 // ── Opt-out keywords (Meta policy — must honor these) ──────────────────────────
 const OPT_OUT_KEYWORDS = new Set(['stop', 'unsubscribe', 'optout', 'opt out', 'cancel', 'quit', 'end', 'block'])
@@ -239,6 +240,17 @@ router.post('/meta', async (req, res) => {
 
     for (const entry of (body.entry || [])) {
       for (const change of (entry.changes || [])) {
+
+        // ── Template status update (APPROVED / REJECTED) ───────────────────
+        // Meta fires this when a template you submitted gets reviewed.
+        // We auto-update MongoDB so the template appears in Bulk Messaging immediately.
+        if (change.field === 'message_template_status_update') {
+          await handleTemplateStatusWebhook(change.value || {}).catch(err =>
+            console.error('[Webhook] Template status update error:', err.message)
+          )
+          continue
+        }
+
         if (change.field !== 'messages') continue
 
         const value = change.value || {}

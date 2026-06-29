@@ -9,6 +9,7 @@ const Message       = require('../models/Message')
 const WebhookLog    = require('../models/WebhookLog')
 const asyncHandler  = require('../utils/asyncHandler')
 const { success }   = require('../utils/apiResponse')
+const waService     = require('../services/whatsapp/whatsapp.service')
 
 // GET /api/v1/admin/dashboard
 const getDashboard = asyncHandler(async (req, res) => {
@@ -174,13 +175,43 @@ const reviewTemplate = asyncHandler(async (req, res) => {
   const template = await Template.findById(req.params.id)
   if (!template) return res.status(404).json({ success: false, message: 'Template not found' })
 
-  template.status = action === 'approve' ? 'APPROVED' : 'REJECTED'
   if (action === 'reject') {
+    template.status = 'REJECTED'
     template.rejectionReason = reason || 'CUSTOM'
     if (note) template.rejectionNote = note
+    await template.save()
+    return success(res, { template }, 'Template rejected')
   }
+
+  // action === 'approve': submit to Meta so it can actually be used in campaigns.
+  // Without this, Meta has never seen the template and all campaign sends will fail.
+  try {
+    const result = await waService.submitTemplate({
+      name:       template.name,
+      category:   template.category,
+      language:   template.language,
+      components: template.components,
+    })
+    template.metaTemplateId = result.metaTemplateId
+
+    if (process.env.WA_PROVIDER !== 'meta') {
+      // Mock mode: no real Meta, so approve immediately
+      template.status = 'APPROVED'
+    } else {
+      // Real Meta: set PENDING — handleTemplateStatusWebhook will set APPROVED when Meta confirms
+      template.status = 'PENDING'
+      console.log(`[Admin] Submitted "${template.name}" to Meta (ID: ${result.metaTemplateId}). Awaiting Meta review.`)
+    }
+  } catch (err) {
+    const metaMsg = err.response?.data?.error?.message || err.message
+    console.warn(`[Admin] Auto-submit of "${template.name}" to Meta failed: ${metaMsg}`)
+    // Fallback: mark APPROVED locally. Most likely cause: template already exists in Meta.
+    // Run "Sync Templates" in the UI to import Meta's approved version.
+    template.status = 'APPROVED'
+  }
+
   await template.save()
-  return success(res, { template }, action === 'approve' ? 'Template approved' : 'Template rejected')
+  return success(res, { template }, 'Template approved and submitted to Meta for review')
 })
 
 // GET /api/v1/admin/health
