@@ -88,7 +88,7 @@ const sendMessage = asyncHandler(async (req, res) => {
     }
 
     try {
-      const result = await waService.sendTextMessage({ to: conv.contact.phone, text })
+      const result = await waService.sendTextMessage(req.tenantId, { to: conv.contact.phone, text })
       waMessageId = result.messageId
       status = result.status
     } catch {

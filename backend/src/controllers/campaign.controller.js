@@ -66,8 +66,25 @@ const sendCampaign = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: `Cannot send a campaign with status: ${campaign.status}` })
   }
 
-  // Check tenant message usage limit
-  const tenant = await Tenant.findById(req.tenantId).select('limits usage').lean()
+  // Check tenant TOS acceptance — required before any bulk sending
+  const tenant = await Tenant.findById(req.tenantId).select('limits usage tosAccepted').lean()
+  if (!tenant.tosAccepted) {
+    return res.status(403).json({
+      success: false,
+      message: 'You must accept the Bulk Messaging Terms of Service before sending campaigns.',
+      code: 'TOS_REQUIRED',
+    })
+  }
+
+  // Prevent multiple simultaneous campaigns — protects quality score and API rate limits
+  const alreadyRunning = await Campaign.countDocuments({ tenant: req.tenantId, status: 'running' })
+  if (alreadyRunning > 0) {
+    return res.status(429).json({
+      success: false,
+      message: 'A campaign is already running. Wait for it to complete before starting another.',
+      code: 'CAMPAIGN_ALREADY_RUNNING',
+    })
+  }
 
   const contactQuery = { tenant: req.tenantId, status: 'active', isOptedIn: true }
   if (campaign.recipients.type === 'segment') contactQuery.tags = { $in: campaign.recipients.tags }
@@ -115,7 +132,7 @@ const sendCampaign = asyncHandler(async (req, res) => {
           }
         }
 
-        const result = await waService.sendTemplateMessage({
+        const result = await waService.sendTemplateMessage(campaign.tenant, {
           to: contact.phone,
           templateName: campaign.template.name,
           language: campaign.template.language,
@@ -144,7 +161,8 @@ const sendCampaign = asyncHandler(async (req, res) => {
         if (!firstError) firstError = errMsg
         console.error(`[Campaign] Failed to send to ${contact.phone}:`, JSON.stringify(metaErr || err.message))
       }
-      await new Promise(r => setTimeout(r, 50))
+      // 300ms between sends — respects Meta API rate limits and protects WABA quality score
+      await new Promise(r => setTimeout(r, 300))
     }
 
     // delivered/read stats start at 0 — they are incremented by webhook handleStatus

@@ -10,7 +10,11 @@ const tenantSchema = new mongoose.Schema(
       displayName:   { type: String, trim: true },
       phoneNumberId: { type: String, trim: true },
       wabaId:        { type: String, trim: true },
-      accessToken:   { type: String, select: false }, // never returned by default
+      accessToken:   { type: String, select: false }, // AES-256 encrypted — never returned by default
+      connectedAt:   { type: Date, default: null },
+      // Temporary token stored during Embedded Signup OAuth flow (15-min TTL)
+      oauthToken:          { type: String, select: false },
+      oauthTokenExpiresAt: { type: Date, default: null },
       status: {
         type: String,
         enum: ['connected', 'disconnected', 'pending'],
@@ -37,6 +41,10 @@ const tenantSchema = new mongoose.Schema(
     },
 
     isActive: { type: Boolean, default: true },
+
+    // Anti-spam compliance — must accept TOS before bulk messaging
+    tosAccepted:   { type: Boolean, default: false },
+    tosAcceptedAt: { type: Date, default: null },
   },
   { timestamps: true }
 )

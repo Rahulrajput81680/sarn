@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   User, Mail, Phone, Building2, Globe, MapPin,
   Camera, Shield, Calendar, Smartphone, Save,
-  CheckCircle, Briefcase, Hash, BadgeCheck,
+  Briefcase,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PageHeader from '../../../components/layout/PageHeader'
@@ -48,29 +48,59 @@ function Section({ title, description, children, delay = 0 }) {
 export default function Profile() {
   const { user, setAuth, token } = useAuthStore()
   const fileRef = useRef(null)
-  const [saving, setSaving] = useState(false)
-  const [avatar, setAvatar] = useState(null)
+  const [saving, setSaving]   = useState(false)
+  const [avatar, setAvatar]   = useState(null)
+  const [joinedAt, setJoinedAt] = useState(null)
+  const [waTenant, setWaTenant] = useState(null)
 
   const [personal, setPersonal] = useState({
-    name: user?.name || '',
-    email: user?.email || '',
-    phone: user?.phone || '',
+    name:        user?.name        || '',
+    email:       user?.email       || '',
+    phone:       user?.phone       || '',
     designation: user?.designation || '',
   })
 
   const [business, setBusiness] = useState({
     businessName: user?.businessName || '',
-    category: user?.category || '',
-    description: user?.description || '',
-    website: user?.website || '',
-    address: user?.address || '',
+    category:     user?.category     || '',
+    description:  user?.description  || '',
+    website:      user?.website      || '',
+    address:      user?.address      || '',
   })
 
   const [waProfile, setWaProfile] = useState({
-    displayName: user?.waDisplayName || '',
-    waCategory: user?.waCategory || '',
-    waDescription: user?.waDescription || '',
+    displayName:   user?.waDisplayName  || '',
+    waCategory:    user?.waCategory     || '',
+    waDescription: user?.waDescription  || '',
   })
+
+  // Load fresh profile data to get createdAt and tenant WA info
+  useEffect(() => {
+    axiosInstance.get('/api/v1/profile').then(({ data }) => {
+      const u = data.data.user
+      setJoinedAt(u.createdAt)
+      setWaTenant(u.tenant?.whatsapp || null)
+      // Refresh form state with latest saved values
+      setPersonal({
+        name:        u.name        || '',
+        email:       u.email       || '',
+        phone:       u.phone       || '',
+        designation: u.designation || '',
+      })
+      setBusiness({
+        businessName: u.businessName || '',
+        category:     u.category     || '',
+        description:  u.description  || '',
+        website:      u.website      || '',
+        address:      u.address      || '',
+      })
+      setWaProfile({
+        displayName:   u.waDisplayName  || '',
+        waCategory:    u.waCategory     || '',
+        waDescription: u.waDescription  || '',
+      })
+    }).catch(() => {})
+  }, [])
 
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0]
@@ -91,8 +121,8 @@ export default function Profile() {
   }
 
   const handleSave = async () => {
-    if (!personal.name.trim()) { toast.error('Full name is required'); return }
-    if (!personal.email.trim()) { toast.error('Email is required'); return }
+    if (!personal.name.trim())  { toast.error('Full name is required');  return }
+    if (!personal.email.trim()) { toast.error('Email is required');       return }
     setSaving(true)
     try {
       const { data } = await axiosInstance.put('/api/v1/profile', {
@@ -108,11 +138,14 @@ export default function Profile() {
   }
 
   const initials = personal.name
-    ?.split(' ')
-    .map(w => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || 'U'
+    ?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'U'
+
+  const joinedFormatted = joinedAt
+    ? new Date(joinedAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+    : null
+
+  const waConnected   = waTenant?.status === 'connected'
+  const waPhoneNumber = waTenant?.phoneNumber || waTenant?.displayName || null
 
   return (
     <div className="space-y-5 max-w-3xl">
@@ -137,8 +170,8 @@ export default function Profile() {
           {/* Avatar */}
           <div className="relative shrink-0">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center overflow-hidden">
-              {avatar
-                ? <img src={avatar} alt="avatar" className="w-full h-full object-cover" />
+              {(avatar || user?.avatar)
+                ? <img src={avatar || user.avatar} alt="avatar" className="w-full h-full object-cover" />
                 : <span className="text-white text-xl sm:text-2xl font-bold">{initials}</span>
               }
             </div>
@@ -162,33 +195,19 @@ export default function Profile() {
                 <Shield size={10} />
                 {user?.role || 'Agent'}
               </span>
-              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
-                <BadgeCheck size={10} />
-                Verified
-              </span>
-              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-50 text-gray-500">
-                <Calendar size={10} />
-                Joined Jan 2024
-              </span>
+              {joinedFormatted && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-50 text-gray-500">
+                  <Calendar size={10} />
+                  Joined {joinedFormatted}
+                </span>
+              )}
             </div>
-          </div>
-
-          {/* Account ID */}
-          <div className="hidden sm:flex flex-col items-end gap-1 shrink-0">
-            <span className="text-xs text-gray-400">Account ID</span>
-            <span className="text-xs font-mono font-medium text-gray-600 bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg">
-              {user?.id || 'USR-00042'}
-            </span>
           </div>
         </div>
       </motion.div>
 
       {/* Personal Information */}
-      <Section
-        title="Personal Information"
-        description="Your login identity and contact details"
-        delay={0.05}
-      >
+      <Section title="Personal Information" description="Your login identity and contact details" delay={0.05}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Full Name"
@@ -224,11 +243,7 @@ export default function Profile() {
       </Section>
 
       {/* Business Profile */}
-      <Section
-        title="Business Profile"
-        description="Information about your organisation shown to contacts and on reports"
-        delay={0.08}
-      >
+      <Section title="Business Profile" description="Information about your organisation" delay={0.08}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Business Name"
@@ -278,25 +293,33 @@ export default function Profile() {
       </Section>
 
       {/* WhatsApp Business Profile */}
-      <Section
-        title="WhatsApp Business Profile"
-        description="How your business appears on WhatsApp to customers"
-        delay={0.11}
-      >
-        {/* Connected number pill */}
-        <div className="flex items-center gap-3 px-3 py-2.5 bg-green-50 border border-green-100 rounded-lg">
-          <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center shrink-0">
-            <Smartphone size={14} className="text-white" />
+      <Section title="WhatsApp Business Profile" description="How your business appears on WhatsApp to customers" delay={0.11}>
+        {/* Connection status */}
+        {waConnected ? (
+          <div className="flex items-center gap-3 px-3 py-2.5 bg-green-50 border border-green-100 rounded-lg">
+            <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center shrink-0">
+              <Smartphone size={14} className="text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold text-green-800 uppercase tracking-wide">Connected Number</p>
+              <p className="text-sm font-mono font-semibold text-green-700">{waPhoneNumber || 'Connected'}</p>
+            </div>
+            <span className="flex items-center gap-1 text-xs font-medium text-green-600 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              Active
+            </span>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-semibold text-green-800 uppercase tracking-wide">Connected Number</p>
-            <p className="text-sm font-mono font-semibold text-green-700">+91 98765 43210</p>
+        ) : (
+          <div className="flex items-center gap-3 px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-lg">
+            <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center shrink-0">
+              <Smartphone size={14} className="text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">WhatsApp</p>
+              <p className="text-sm text-gray-400">Not connected — go to WhatsApp Connect in onboarding</p>
+            </div>
           </div>
-          <span className="flex items-center gap-1 text-xs font-medium text-green-600 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            Active
-          </span>
-        </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
@@ -316,7 +339,6 @@ export default function Profile() {
               <option value="">Select WhatsApp category…</option>
               {WA_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            <p className="text-xs text-gray-400">As per Meta's business category list</p>
           </div>
         </div>
 
@@ -329,7 +351,7 @@ export default function Profile() {
             placeholder="Short description shown on your WhatsApp business profile…"
             className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
           />
-          <p className="text-xs text-gray-400 text-right">{waProfile.waDescription.length} / 139 (WhatsApp limit)</p>
+          <p className="text-xs text-gray-400 text-right">{waProfile.waDescription.length} / 139</p>
         </div>
       </Section>
 

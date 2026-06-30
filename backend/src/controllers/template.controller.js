@@ -1,4 +1,3 @@
-const axios    = require('axios')
 const Template = require('../models/Template')
 const Tenant   = require('../models/Tenant')
 const asyncHandler = require('../utils/asyncHandler')
@@ -69,7 +68,7 @@ const submitTemplate = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Template is already approved' })
   }
 
-  const result = await waService.submitTemplate({
+  const result = await waService.submitTemplate(req.tenantId, {
     name:       template.name,
     category:   template.category,
     language:   template.language,
@@ -96,28 +95,11 @@ const submitTemplate = asyncHandler(async (req, res) => {
 // ✅ Idempotent — upsert by (tenant + name). Running it many times is safe.
 // ✅ Paginated — handles accounts with 100+ templates automatically.
 const syncTemplatesFromMeta = asyncHandler(async (req, res) => {
-  if (process.env.WA_PROVIDER !== 'meta') {
-    return success(res, { synced: 0, total: 0 }, 'Mock mode: nothing to sync from Meta')
-  }
+  // fetchTemplates uses the tenant's own WABA credentials (or platform fallback)
+  const allTemplates = await waService.fetchTemplates(req.tenantId)
 
-  const wabaId = process.env.META_WA_BUSINESS_ID
-  const token  = process.env.META_WA_TOKEN
-
-  if (!wabaId || !token) {
-    return res.status(500).json({
-      success: false,
-      message: 'META_WA_BUSINESS_ID or META_WA_TOKEN not configured in .env',
-    })
-  }
-
-  // Paginate through all Meta templates for this WABA
-  let allTemplates = []
-  let nextUrl = `https://graph.facebook.com/v20.0/${wabaId}/message_templates?limit=100&fields=name,status,category,language,components&access_token=${token}`
-
-  while (nextUrl) {
-    const { data } = await axios.get(nextUrl)
-    allTemplates = allTemplates.concat(data.data || [])
-    nextUrl = data.paging?.next || null
+  if (allTemplates.length === 0 && process.env.WA_PROVIDER !== 'meta') {
+    return success(res, { synced: 0, total: 0 }, 'Mock mode: no templates to sync')
   }
 
   // Only upsert APPROVED — pending/rejected templates can't be used in campaigns

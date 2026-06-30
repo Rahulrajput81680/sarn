@@ -5,10 +5,12 @@ const Tenant = require('../models/Tenant')
 const asyncHandler = require('../utils/asyncHandler')
 const { success } = require('../utils/apiResponse')
 const { generateApiKey } = require('../utils/generateToken')
+const { encrypt, decrypt } = require('../utils/encryption')
+const waService = require('../services/whatsapp/whatsapp.service')
 
 // GET /api/v1/profile
 const getProfile = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id).populate('tenant', 'name plan limits usage whatsapp')
+  const user = await User.findById(req.user._id).populate('tenant', 'name plan limits usage whatsapp tosAccepted tosAcceptedAt')
   return success(res, { user })
 })
 
@@ -113,7 +115,7 @@ const getTeamMembers = asyncHandler(async (req, res) => {
   return success(res, { users })
 })
 
-// PUT /api/v1/profile/wa-connect  (called during onboarding step 2)
+// PUT /api/v1/profile/wa-connect  — manual credential entry (developer / advanced users)
 const connectWhatsApp = asyncHandler(async (req, res) => {
   const { phoneNumber, displayName, phoneNumberId, wabaId, accessToken } = req.body
   if (!phoneNumber || !displayName) {
@@ -121,18 +123,110 @@ const connectWhatsApp = asyncHandler(async (req, res) => {
   }
 
   const update = {
-    'whatsapp.phoneNumber': phoneNumber.trim(),
-    'whatsapp.displayName': displayName.trim(),
-    'whatsapp.status': 'connected',
+    'whatsapp.phoneNumber':  phoneNumber.trim(),
+    'whatsapp.displayName':  displayName.trim(),
+    'whatsapp.status':       'connected',
+    'whatsapp.connectedAt':  new Date(),
   }
   if (phoneNumberId) update['whatsapp.phoneNumberId'] = phoneNumberId.trim()
   if (wabaId)        update['whatsapp.wabaId']        = wabaId.trim()
-  if (accessToken)   update['whatsapp.accessToken']   = accessToken.trim()
+  // Encrypt token before storing — never saved in plaintext
+  if (accessToken)   update['whatsapp.accessToken']   = encrypt(accessToken.trim())
 
   const tenant = await Tenant.findByIdAndUpdate(req.user.tenant, update, { new: true })
-    .select('name whatsapp.phoneNumber whatsapp.displayName whatsapp.status')
+    .select('name whatsapp.phoneNumber whatsapp.displayName whatsapp.status whatsapp.connectedAt')
 
   return success(res, { tenant }, 'WhatsApp connected successfully')
+})
+
+// POST /api/v1/profile/wa-connect-oauth  — step 1 of Embedded Signup flow
+// Exchanges an auth code for a token and returns available WABA/phone options.
+// The token is stored server-side only — never sent to the client.
+const connectWhatsAppOAuth = asyncHandler(async (req, res) => {
+  const { code } = req.body
+  if (!code) return res.status(400).json({ success: false, message: 'OAuth code is required' })
+
+  const appId     = process.env.META_APP_ID
+  const appSecret = process.env.META_APP_SECRET
+  if (!appId || !appSecret) {
+    return res.status(500).json({ success: false, message: 'META_APP_ID or META_APP_SECRET not configured on the server' })
+  }
+
+  // Exchange code server-side — token is never exposed to the browser
+  const { accessToken } = await waService.exchangeCodeForToken({ code, appId, appSecret })
+
+  // Fetch all WABAs and phone numbers linked to this token
+  const businesses = await waService.getWABAInfo(accessToken)
+
+  const options = []
+  for (const biz of businesses) {
+    for (const waba of (biz.whatsapp_business_accounts?.data || [])) {
+      for (const phone of (waba.phone_numbers?.data || [])) {
+        options.push({
+          wabaId:        waba.id,
+          wabaName:      waba.name || biz.name,
+          phoneNumberId: phone.id,
+          displayPhone:  phone.display_phone_number,
+          verifiedName:  phone.verified_name,
+        })
+      }
+    }
+  }
+
+  if (options.length === 0) {
+    return res.status(422).json({
+      success: false,
+      message: 'No WhatsApp Business numbers found. Ensure your WABA is active and linked to your Meta Business account.',
+    })
+  }
+
+  // Temporarily store the encrypted token in the tenant doc (15-min TTL)
+  await Tenant.findByIdAndUpdate(req.user.tenant, {
+    'whatsapp.oauthToken':          encrypt(accessToken),
+    'whatsapp.oauthTokenExpiresAt': new Date(Date.now() + 15 * 60 * 1000),
+  })
+
+  return success(res, { options }, 'Connected to Meta. Select your WhatsApp number to continue.')
+})
+
+// PUT /api/v1/profile/wa-select-number  — step 2 of Embedded Signup flow
+// User picks their phone number; backend finalizes the connection using the stored token.
+const selectWhatsAppNumber = asyncHandler(async (req, res) => {
+  const { phoneNumberId, wabaId, displayName, displayPhone } = req.body
+  if (!phoneNumberId || !wabaId) {
+    return res.status(400).json({ success: false, message: 'phoneNumberId and wabaId are required' })
+  }
+
+  const tenant = await Tenant.findById(req.user.tenant)
+    .select('+whatsapp.oauthToken whatsapp.oauthTokenExpiresAt')
+    .lean()
+
+  if (
+    !tenant?.whatsapp?.oauthToken ||
+    !tenant.whatsapp.oauthTokenExpiresAt ||
+    new Date() > new Date(tenant.whatsapp.oauthTokenExpiresAt)
+  ) {
+    return res.status(401).json({ success: false, message: 'OAuth session expired. Please reconnect with Meta.' })
+  }
+
+  // Promote temp token → permanent access token; clear the temporary fields
+  const updated = await Tenant.findByIdAndUpdate(
+    req.user.tenant,
+    {
+      'whatsapp.accessToken':          tenant.whatsapp.oauthToken, // already encrypted
+      'whatsapp.phoneNumberId':        phoneNumberId,
+      'whatsapp.wabaId':               wabaId,
+      'whatsapp.displayName':          displayName || displayPhone || phoneNumberId,
+      'whatsapp.phoneNumber':          displayPhone || '',
+      'whatsapp.status':               'connected',
+      'whatsapp.connectedAt':          new Date(),
+      'whatsapp.oauthToken':           null,
+      'whatsapp.oauthTokenExpiresAt':  null,
+    },
+    { new: true }
+  ).select('name whatsapp.phoneNumber whatsapp.displayName whatsapp.phoneNumberId whatsapp.wabaId whatsapp.status whatsapp.connectedAt')
+
+  return success(res, { tenant: updated }, 'WhatsApp number connected successfully')
 })
 
 // POST /api/v1/profile/complete-onboarding
@@ -141,9 +235,22 @@ const completeOnboarding = asyncHandler(async (req, res) => {
   return success(res, {}, 'Onboarding complete')
 })
 
+// POST /api/v1/profile/accept-tos
+const acceptTOS = asyncHandler(async (req, res) => {
+  if (!req.user.tenant) {
+    return res.status(400).json({ success: false, message: 'No tenant associated with this account' })
+  }
+  const tenant = await Tenant.findByIdAndUpdate(
+    req.user.tenant,
+    { tosAccepted: true, tosAcceptedAt: new Date() },
+    { new: true }
+  ).select('tosAccepted tosAcceptedAt')
+  return success(res, { tosAccepted: tenant.tosAccepted, tosAcceptedAt: tenant.tosAcceptedAt }, 'Terms accepted')
+})
+
 module.exports = {
   getProfile, updateProfile, uploadAvatar,
   changePassword, updateNotifications, updateWASettings,
   regenerateApiKey, updateWebhook, getTeamMembers,
-  connectWhatsApp, completeOnboarding,
+  connectWhatsApp, connectWhatsAppOAuth, selectWhatsAppNumber, completeOnboarding, acceptTOS,
 }

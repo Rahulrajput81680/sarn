@@ -25,11 +25,14 @@ axiosInstance.interceptors.response.use(
     if (err.response?.status === 401) {
       try {
         const raw = localStorage.getItem('wixabotic-auth')
-        const token = raw ? JSON.parse(raw)?.state?.token : null
-        if (token?.startsWith('dev-')) return Promise.reject(err)
-      } catch {}
-      localStorage.removeItem('wixabotic-auth')
-      window.location.href = '/login'
+        const role = raw ? JSON.parse(raw)?.state?.role : null
+        localStorage.removeItem('wixabotic-auth')
+        // Redirect admin users to their own login page, not the client login
+        const isAdminRole = role === 'super_admin' || role === 'admin'
+        window.location.href = isAdminRole ? '/admin/login' : '/login'
+      } catch {
+        window.location.href = '/login'
+      }
     } else if (err.response?.status >= 500) {
       toast.error('Server error. Please try again.')
     }
