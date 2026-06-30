@@ -138,9 +138,10 @@ const deleteTenant = asyncHandler(async (req, res) => {
 
 // GET /api/v1/admin/users
 const getUsers = asyncHandler(async (req, res) => {
-  const { search = '', role, page = 1, limit = 20 } = req.query
+  const { search = '', role, tenant, page = 1, limit = 20 } = req.query
   const filter = { role: { $ne: 'super_admin' } }
   if (role) filter.role = role
+  if (tenant) filter.tenant = tenant
   if (search) filter.$or = [{ name: { $regex: search, $options: 'i' } }, { email: { $regex: search, $options: 'i' } }]
 
   const skip = (Number(page) - 1) * Number(limit)
@@ -186,7 +187,7 @@ const reviewTemplate = asyncHandler(async (req, res) => {
   // action === 'approve': submit to Meta so it can actually be used in campaigns.
   // Without this, Meta has never seen the template and all campaign sends will fail.
   try {
-    const result = await waService.submitTemplate({
+    const result = await waService.submitTemplate(template.tenant, {
       name:       template.name,
       category:   template.category,
       language:   template.language,

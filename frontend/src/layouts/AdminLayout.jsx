@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, MessageSquare, Send, Users, FileText,
+  LayoutDashboard, FileText,
   Building2, UserPlus, Activity, Webhook,
   Bell, Search, LogOut, PanelLeftClose, PanelLeftOpen,
   UserCircle, Settings, MoreVertical, Shield, Users2,
@@ -10,13 +10,9 @@ import clsx from 'clsx'
 import useAuthStore from '../store/authStore'
 import useUIStore from '../store/uiStore'
 
-// Client-parallel nav — mirrors the client sidebar so admin can manage what clients see
 const NAV = [
-  { label: 'Dashboard',      icon: LayoutDashboard, to: '/admin' },
-  { label: 'Messages',       icon: MessageSquare,   to: '/admin/inbox' },
-  { label: 'Bulk Messaging', icon: Send,            to: '/admin/bulk-messaging' },
-  { label: 'Contacts',       icon: Users,           to: '/admin/contacts' },
-  { label: 'Templates',      icon: FileText,        to: '/admin/meta/templates' },
+  { label: 'Dashboard', icon: LayoutDashboard, to: '/admin' },
+  { label: 'Templates', icon: FileText,        to: '/admin/meta/templates' },
 ]
 
 // Admin-only management tools

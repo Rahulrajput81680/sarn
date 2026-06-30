@@ -43,7 +43,7 @@ export default function Login() {
       const { user, token } = res.data.data
       setAuth(user, token)
       toast.success('Welcome back!')
-      if (user.role === ROLES.SUPER_ADMIN) {
+      if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.ADMIN) {
         navigate('/admin')
       } else {
         navigate('/dashboard')

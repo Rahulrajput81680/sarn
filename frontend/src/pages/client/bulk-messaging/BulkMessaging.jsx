@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PageHeader from '../../../components/layout/PageHeader'
+import TOSModal from '../../../components/bulk-messaging/TOSModal'
 import api from '../../../api/axios'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
@@ -617,13 +618,16 @@ export default function BulkMessaging() {
   const [loadingData,    setLoadingData]    = useState(true)
   const [refreshing,     setRefreshing]     = useState(false)
   const [syncing,        setSyncing]        = useState(false)
+  const [tosAccepted,    setTosAccepted]    = useState(true)  // optimistic; corrected on load
+  const [tosChecked,     setTosChecked]     = useState(false)
 
   useEffect(() => {
     Promise.all([
       api.get('/api/v1/templates?status=APPROVED&limit=100'),
       api.get('/api/v1/campaigns?limit=50'),
       api.get('/api/v1/contacts?limit=1'),
-    ]).then(([tRes, cRes, ctRes]) => {
+      api.get('/api/v1/profile'),
+    ]).then(([tRes, cRes, ctRes, pRes]) => {
       setTemplates((tRes.data.data?.templates || []).map(normalizeBulkTemplate))
       setCampaigns((cRes.data.data?.campaigns || []).map(normalizeCampaign))
       const total = ctRes.data.data?.total || 0
@@ -634,7 +638,10 @@ export default function BulkMessaging() {
         'Interested',
         'Follow-up',
       ])
-    }).catch(() => {}).finally(() => setLoadingData(false))
+      const tos = pRes.data.data?.user?.tenant?.tosAccepted ?? false
+      setTosAccepted(tos)
+      setTosChecked(true)
+    }).catch(() => { setTosChecked(true) }).finally(() => setLoadingData(false))
   }, [])
 
   const refreshCampaignList = async () => {
@@ -696,6 +703,14 @@ export default function BulkMessaging() {
       setTimeout(refreshCampaignList, 2000)
       setTimeout(refreshCampaignList, 5000)
     } catch (err) {
+      if (err.response?.data?.code === 'TOS_REQUIRED') {
+        setTosAccepted(false)  // re-show TOS modal
+        return
+      }
+      if (err.response?.data?.code === 'CAMPAIGN_ALREADY_RUNNING') {
+        toast.error('A campaign is already running. Wait for it to complete first.')
+        return
+      }
       toast.error(err.response?.data?.message || 'Failed to send campaign.')
       return
     }
@@ -714,6 +729,13 @@ export default function BulkMessaging() {
 
   return (
     <div className="space-y-6">
+      {/* TOS modal — shown once until user accepts */}
+      <AnimatePresence>
+        {tosChecked && !tosAccepted && (
+          <TOSModal onAccepted={() => setTosAccepted(true)} />
+        )}
+      </AnimatePresence>
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <PageHeader title="Bulk Messaging" description="Send template-based messages to large contact lists" />
         <motion.button

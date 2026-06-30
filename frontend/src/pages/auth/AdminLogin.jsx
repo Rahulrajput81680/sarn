@@ -3,17 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Lock, Mail, ShieldCheck, AlertTriangle } from 'lucide-react'
 import useAuthStore from '../../store/authStore'
+import axiosInstance from '../../api/axios'
 import { ROLES } from '../../constants/roles'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
-
-/* Dummy admin credentials */
-const ADMIN_ACCOUNTS = [
-  { email: 'admin@SarnConnect.io',    password: 'admin123',    role: ROLES.SUPER_ADMIN, name: 'Kunal Sharma'  },
-  { email: 'support@SarnConnect.io',  password: 'support123',  role: ROLES.ADMIN,       name: 'Arjun Mehta'  },
-  { email: 'billing@SarnConnect.io',  password: 'billing123',  role: ROLES.ADMIN,       name: 'Priya Sharma' },
-  { email: 'compliance@SarnConnect.io',password: 'comply123',  role: ROLES.ADMIN,       name: 'Sneha Rao'    },
-]
 
 export default function AdminLogin() {
   const navigate    = useNavigate()
@@ -25,25 +18,27 @@ export default function AdminLogin() {
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setError('')
     setLoading(true)
 
-    setTimeout(() => {
-      const account = ADMIN_ACCOUNTS.find(
-        (a) => a.email.toLowerCase() === email.toLowerCase() && a.password === password
-      )
+    try {
+      const res = await axiosInstance.post('/api/v1/auth/login', { email, password })
+      const { user, token } = res.data.data
 
-      if (account) {
-        const user = { id: account.email, name: account.name, email: account.email, role: account.role }
-        setAuth(user, `dummy-admin-token-${Date.now()}`)
-        navigate('/admin', { replace: true })
-      } else {
-        setError('Invalid admin credentials. Access denied.')
+      if (user.role !== ROLES.SUPER_ADMIN && user.role !== ROLES.ADMIN) {
+        setError('Access denied. This panel is for platform administrators only.')
         setLoading(false)
+        return
       }
-    }, 700)
+
+      setAuth(user, token)
+      navigate('/admin', { replace: true })
+    } catch (err) {
+      setError(err.response?.data?.message || 'Invalid credentials. Access denied.')
+      setLoading(false)
+    }
   }
 
   return (
@@ -144,29 +139,6 @@ export default function AdminLogin() {
             )}
           </button>
         </form>
-
-        {/* Demo credentials hint */}
-        <div className="mt-6 p-4 bg-slate-800/60 border border-slate-700/50 rounded-xl">
-          <p className="text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wide">Demo Credentials</p>
-          <div className="space-y-1.5">
-            {ADMIN_ACCOUNTS.map((a) => (
-              <button
-                key={a.email}
-                type="button"
-                onClick={() => { setEmail(a.email); setPassword(a.password); setError('') }}
-                className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg hover:bg-slate-700/60 text-left transition-all"
-              >
-                <div>
-                  <p className="text-xs font-medium text-slate-300">{a.name}</p>
-                  <p className="text-[10px] text-slate-500">{a.email}</p>
-                </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${a.role === ROLES.SUPER_ADMIN ? 'bg-red-900/50 text-red-300' : 'bg-slate-700 text-slate-400'}`}>
-                  {a.role === ROLES.SUPER_ADMIN ? 'Super Admin' : 'Admin'}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
 
         <p className="text-center text-xs text-slate-600 mb-7 mt-6">
           Not an admin?{' '}

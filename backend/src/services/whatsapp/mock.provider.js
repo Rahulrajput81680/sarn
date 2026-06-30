@@ -1,41 +1,74 @@
 const { v4: uuidv4 } = require('uuid')
 
-// Simulates Meta WhatsApp Cloud API responses locally.
-// Replace with meta.provider.js when you get API access.
+// Simulates Meta WhatsApp Cloud API responses for local development.
+// All functions accept the same signature as meta.provider.js — swap WA_PROVIDER=meta to go live.
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 
-async function sendTextMessage({ to, text }) {
+async function sendTextMessage({ to, text, config }) {
   await delay(150)
-  return {
-    messageId: `mock_${uuidv4()}`,
-    status: 'sent',
-    timestamp: new Date(),
-  }
+  return { messageId: `mock_${uuidv4()}`, status: 'sent', timestamp: new Date() }
 }
 
-async function sendTemplateMessage({ to, templateName, language = 'en', components = [] }) {
+async function sendTemplateMessage({ to, templateName, language = 'en', components = [], config }) {
   await delay(200)
-  return {
-    messageId: `mock_${uuidv4()}`,
-    status: 'sent',
-    timestamp: new Date(),
-  }
+  return { messageId: `mock_${uuidv4()}`, status: 'sent', timestamp: new Date() }
 }
 
-async function getMessageStatus(waMessageId) {
+async function getMessageStatus(waMessageId, config) {
   await delay(50)
-  // Simulate progression: sent → delivered → read
   return { status: 'delivered', timestamp: new Date() }
 }
 
-async function submitTemplate({ name, category, language, components }) {
+async function submitTemplate({ name, category, language, components, config }) {
   await delay(300)
-  // Mock Meta template submission — returns a fake template ID
-  return {
-    metaTemplateId: `mock_tpl_${uuidv4()}`,
-    status: 'PENDING',
-  }
+  return { metaTemplateId: `mock_tpl_${uuidv4()}`, status: 'PENDING' }
 }
 
-module.exports = { sendTextMessage, sendTemplateMessage, getMessageStatus, submitTemplate }
+async function fetchTemplates(config) {
+  await delay(100)
+  return [] // Mock: no templates fetched from "Meta"
+}
+
+async function exchangeCodeForToken({ code, appId, appSecret }) {
+  await delay(200)
+  return { accessToken: `mock_access_token_${uuidv4()}`, tokenType: 'bearer' }
+}
+
+async function getWABAInfo(accessToken) {
+  await delay(200)
+  // Return a mock business with one WABA and phone number for development testing
+  return [
+    {
+      id:   'mock_biz_001',
+      name: 'Mock Business',
+      whatsapp_business_accounts: {
+        data: [
+          {
+            id:   'mock_waba_001',
+            name: 'Mock WABA',
+            phone_numbers: {
+              data: [
+                {
+                  id:                   'mock_phone_001',
+                  display_phone_number: '+91 00000 00000',
+                  verified_name:        'Mock Business',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ]
+}
+
+module.exports = {
+  sendTextMessage,
+  sendTemplateMessage,
+  getMessageStatus,
+  submitTemplate,
+  fetchTemplates,
+  exchangeCodeForToken,
+  getWABAInfo,
+}
