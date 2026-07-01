@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, Send, Users, MessageSquare,
+  LayoutDashboard, Send, Users, MessageSquare, FileText,
   Bell, Search, LogOut, PanelLeftClose, PanelLeftOpen, Wifi, WifiOff, MoreVertical, Phone,
-  UserCircle, Settings,
+  UserCircle, Settings, AlertTriangle, ArrowRight, Info, X,
 } from 'lucide-react'
 import clsx from 'clsx'
 import useAuthStore from '../store/authStore'
@@ -14,6 +14,7 @@ const NAV = [
   { label: 'Dashboard',      icon: LayoutDashboard, to: '/dashboard' },
   { label: 'Messages',       icon: MessageSquare,   to: '/inbox' },
   { label: 'Contacts',       icon: Users,           to: '/contacts' },
+  { label: 'Templates',      icon: FileText,        to: '/templates' },
   { label: 'Bulk Messaging', icon: Send,            to: '/bulk-messaging' },
 ]
 
@@ -213,9 +214,13 @@ function SidebarContent({ sidebarOpen, onNavClick = () => {} }) {
 export default function DashboardLayout() {
   const { user, isOnboarded } = useAuthStore()
   const { sidebarOpen, toggleSidebar } = useUIStore()
+  const navigate = useNavigate()
   const location = useLocation()
-  const waConnected = !!user?.tenant?.whatsapp?.phoneNumber
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const waConnected       = !!user?.tenant?.whatsapp?.phoneNumber
+  const profileIncomplete = isOnboarded && (!user?.businessName || !user?.category || !user?.waDisplayName)
+  const [mobileSidebarOpen,    setMobileSidebarOpen]    = useState(false)
+  const [showSetupModal,       setShowSetupModal]       = useState(false)
+  const [profileBannerDismissed, setProfileBannerDismissed] = useState(false)
 
   useEffect(() => {
     if (AUTO_COLLAPSE_ROUTES.some((r) => location.pathname.startsWith(r)) && sidebarOpen) {
@@ -293,12 +298,53 @@ export default function DashboardLayout() {
             </button>
           </div>
         </header>
+        {/* Profile incomplete banner */}
+        {profileIncomplete && !profileBannerDismissed && (
+          <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-blue-50 border-b border-blue-200 text-blue-800">
+            <Info size={15} className="shrink-0 text-blue-500" />
+            <p className="flex-1 text-xs font-medium">
+              Your business profile is incomplete — finish it to unlock full WhatsApp Business features and Meta verification.
+            </p>
+            <button
+              onClick={() => navigate('/profile')}
+              className="flex items-center gap-1 text-xs font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900 transition-colors whitespace-nowrap"
+            >
+              Complete Profile <ArrowRight size={12} />
+            </button>
+            <button
+              onClick={() => setProfileBannerDismissed(true)}
+              className="p-0.5 text-blue-400 hover:text-blue-700 transition-colors ml-1"
+              title="Dismiss"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
+        {/* WhatsApp not connected banner */}
+        {isOnboarded && !waConnected && (
+          <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800">
+            <AlertTriangle size={15} className="shrink-0 text-amber-500" />
+            <p className="flex-1 text-xs font-medium">
+              WhatsApp is not connected — messaging features won't work until you complete setup.
+            </p>
+            <button
+              onClick={() => setShowSetupModal(true)}
+              className="flex items-center gap-1 text-xs font-semibold text-amber-700 underline underline-offset-2 hover:text-amber-900 transition-colors whitespace-nowrap"
+            >
+              Complete Setup <ArrowRight size={12} />
+            </button>
+          </div>
+        )}
+
         <main className="flex-1 overflow-y-auto p-3 md:p-4 lg:p-6">
           <Outlet />
         </main>
       </div>
 
-      {!isOnboarded && <OnboardingWizard />}
+      {(!isOnboarded || showSetupModal) && (
+        <OnboardingWizard onDismiss={() => setShowSetupModal(false)} />
+      )}
     </div>
   )
 }

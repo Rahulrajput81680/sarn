@@ -16,8 +16,13 @@ const register = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' })
   }
 
-  const exists = await User.findOne({ email: email.toLowerCase().trim() })
-  if (exists) return res.status(409).json({ success: false, message: 'Email already registered' })
+  const exists = await User.findOne({ email: email.toLowerCase().trim() }).populate('tenant', 'isActive')
+  if (exists) {
+    if (!exists.isActive || exists.tenant?.isActive === false) {
+      return res.status(409).json({ success: false, message: 'This email belongs to a suspended account. Contact support to reactivate it.' })
+    }
+    return res.status(409).json({ success: false, message: 'Email already registered' })
+  }
 
   // Create user first (without tenant) so we have an ID
   const user = await User.create({ name, email, password, role: 'agent' })
@@ -63,7 +68,11 @@ const login = asyncHandler(async (req, res) => {
   }
 
   if (!user.isActive) {
-    return res.status(403).json({ success: false, message: 'Your account has been deactivated. Contact support.' })
+    return res.status(403).json({ success: false, message: 'Your account has been suspended. Please contact support.' })
+  }
+
+  if (user.tenant?.isActive === false) {
+    return res.status(403).json({ success: false, message: 'Your account has been suspended. Please contact support.' })
   }
 
   user.lastLogin = new Date()
@@ -80,6 +89,9 @@ const login = asyncHandler(async (req, res) => {
       role: user.role,
       isOnboarded: user.isOnboarded,
       avatar: user.avatar,
+      businessName:  user.businessName  || '',
+      category:      user.category      || '',
+      waDisplayName: user.waDisplayName || '',
       tenant: user.tenant,
     },
   }, 'Login successful')

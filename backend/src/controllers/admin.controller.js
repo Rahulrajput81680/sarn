@@ -113,6 +113,12 @@ const updateTenant = asyncHandler(async (req, res) => {
 
   const tenant = await Tenant.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true }).populate('owner', 'name email')
   if (!tenant) return res.status(404).json({ success: false, message: 'Tenant not found' })
+
+  // Cascade suspension/reactivation to all users in this tenant
+  if (typeof isActive === 'boolean') {
+    await User.updateMany({ tenant: tenant._id }, { isActive })
+  }
+
   return success(res, { tenant }, 'Tenant updated')
 })
 

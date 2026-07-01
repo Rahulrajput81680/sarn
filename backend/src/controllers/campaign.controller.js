@@ -6,6 +6,7 @@ const Tenant   = require('../models/Tenant')
 const asyncHandler = require('../utils/asyncHandler')
 const { success }  = require('../utils/apiResponse')
 const waService    = require('../services/whatsapp/whatsapp.service')
+const { translateMetaError } = require('../utils/metaErrors')
 
 // GET /api/v1/campaigns
 const getCampaigns = asyncHandler(async (req, res) => {
@@ -156,10 +157,9 @@ const sendCampaign = asyncHandler(async (req, res) => {
         await Contact.findByIdAndUpdate(contact._id, { lastContactDate: new Date(), $inc: { messageCount: 1 } })
       } catch (err) {
         failed++
-        const metaErr = err.response?.data?.error
-        const errMsg = metaErr?.message || (typeof metaErr === 'string' ? metaErr : null) || err.message || 'Unknown error'
+        const errMsg = translateMetaError(err)
         if (!firstError) firstError = errMsg
-        console.error(`[Campaign] Failed to send to ${contact.phone}:`, JSON.stringify(metaErr || err.message))
+        console.error(`[Campaign] Failed to send to ${contact.phone}:`, errMsg)
       }
       // 300ms between sends — respects Meta API rate limits and protects WABA quality score
       await new Promise(r => setTimeout(r, 300))

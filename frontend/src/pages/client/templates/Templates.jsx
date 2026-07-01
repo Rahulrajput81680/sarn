@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Plus, Search, X, Check, FileText, Image, Video, File,
+  Plus, Search, X, FileText, Image, Video, File,
   Type, Phone, Link, Zap, Copy, Trash2, Send, AlertTriangle,
-  Clock, CheckCircle2, XCircle, Eye, ChevronDown, AlignLeft,
-  MoreHorizontal,
+  Clock, CheckCircle2, XCircle, ChevronDown, AlignLeft,
+  MoreHorizontal, RefreshCw,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import PageHeader from '../../../components/layout/PageHeader'
 import api from '../../../api/axios'
 
@@ -54,18 +55,31 @@ const MEDIA_TYPES  = ['IMAGE', 'VIDEO', 'DOCUMENT']
 function flatToComponents(form) {
   const comps = []
   if (form.header?.type && form.header.type !== 'none') {
-    comps.push({ type: 'HEADER', text: form.header.type === 'text' ? (form.header.text || '') : form.header.type.toUpperCase() })
+    if (form.header.type === 'text') {
+      comps.push({ type: 'HEADER', format: 'TEXT', text: form.header.text || '' })
+    } else {
+      // IMAGE | VIDEO | DOCUMENT — Meta requires format field, no text
+      comps.push({ type: 'HEADER', format: form.header.type.toUpperCase() })
+    }
   }
-  if (form.body)   comps.push({ type: 'BODY', text: form.body })
+  if (form.body) {
+    const bodyComp = { type: 'BODY', text: form.body }
+    const varCount = countVars(form.body)
+    if (varCount > 0 && form.sampleValues) {
+      const examples = Array.from({ length: varCount }, (_, i) => form.sampleValues[i + 1] || `sample_${i + 1}`)
+      bodyComp.example = { body_text: [examples] }
+    }
+    comps.push(bodyComp)
+  }
   if (form.footer) comps.push({ type: 'FOOTER', text: form.footer })
   if (form.buttons?.length) {
     comps.push({
       type: 'BUTTONS',
       buttons: form.buttons.map((b) => ({
-        type: b.type === 'url' ? 'URL' : b.type === 'call' ? 'PHONE_NUMBER' : 'QUICK_REPLY',
-        text: b.label,
-        url: b.type === 'url' ? b.value : undefined,
-        phoneNumber: b.type === 'call' ? b.value : undefined,
+        type:         b.type === 'url' ? 'URL' : b.type === 'call' ? 'PHONE_NUMBER' : 'QUICK_REPLY',
+        text:         b.label,
+        url:          b.type === 'url'  ? b.value : undefined,
+        phone_number: b.type === 'call' ? b.value : undefined,  // Meta uses snake_case
       })),
     })
   }
@@ -79,30 +93,37 @@ function componentsToFlat(components = []) {
   const bt = components.find((c) => c.type === 'BUTTONS')
   let header = { type: 'none', text: '', url: '' }
   if (h) {
-    const isMedia = MEDIA_TYPES.includes((h.text || '').toUpperCase())
-    header = { type: isMedia ? h.text.toLowerCase() : 'text', text: isMedia ? '' : (h.text || ''), url: '' }
+    // prefer h.format (Meta's field); fall back to reading h.text for old records
+    const fmt = (h.format || h.text || '').toUpperCase()
+    const isMedia = MEDIA_TYPES.includes(fmt)
+    header = { type: isMedia ? fmt.toLowerCase() : 'text', text: isMedia ? '' : (h.text || ''), url: '' }
+  }
+  const sampleValues = {}
+  if (b?.example?.body_text?.[0]) {
+    b.example.body_text[0].forEach((val, i) => { sampleValues[i + 1] = val })
   }
   return {
     header,
     body: b?.text || '',
     footer: f?.text || '',
     buttons: bt?.buttons?.map((btn) => ({
-      type: btn.type === 'URL' ? 'url' : btn.type === 'PHONE_NUMBER' ? 'call' : 'quick_reply',
+      type:  btn.type === 'URL' ? 'url' : btn.type === 'PHONE_NUMBER' ? 'call' : 'quick_reply',
       label: btn.text || '',
-      value: btn.url || btn.phoneNumber || '',
+      value: btn.url || btn.phone_number || btn.phoneNumber || '',  // handle both cases
     })) || [],
+    sampleValues,
   }
 }
 
 function normalizeTemplate(t) {
-  const { header, body, footer, buttons } = componentsToFlat(t.components || [])
+  const { header, body, footer, buttons, sampleValues } = componentsToFlat(t.components || [])
   return {
     id: t._id || t.id,
     name: t.name,
     category: (t.category || 'MARKETING').toLowerCase(),
     language: CODE_TO_LANG[t.language] || t.language || 'English',
     status: (t.status || 'DRAFT').toLowerCase(),
-    header, body, footer, buttons,
+    header, body, footer, buttons, sampleValues,
     updatedAt: t.updatedAt ? new Date(t.updatedAt).toLocaleDateString() : '',
     usedIn: t.usageCount || 0,
     rejectionReason: t.rejectionReason || null,
@@ -698,20 +719,18 @@ function TemplateCard({ t, index, onEdit, onDuplicate, onDelete, onSubmit }) {
 export default function Templates() {
   const [templates,   setTemplates]   = useState([])
   const [loading,     setLoading]     = useState(true)
+  const [syncing,     setSyncing]     = useState(false)
   const [statusTab,   setStatusTab]   = useState('all')
   const [search,      setSearch]      = useState('')
   const [drawerOpen,  setDrawerOpen]  = useState(false)
   const [editTarget,  setEditTarget]  = useState(null)   // null = new, obj = editing
-  const [toast,       setToast]       = useState(null)
-
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3200) }
 
   const fetchTemplates = useCallback(async () => {
     try {
       const { data } = await api.get('/api/v1/templates?limit=100')
       setTemplates((data.data?.templates || []).map(normalizeTemplate))
     } catch {
-      showToast('Failed to load templates.')
+      toast.error('Failed to load templates.')
     } finally {
       setLoading(false)
     }
@@ -731,6 +750,21 @@ export default function Templates() {
     acc[s] = s === 'all' ? templates.length : templates.filter((t) => t.status === s).length
     return acc
   }, {})
+
+  /* Sync from Meta WABA */
+  const handleSync = async () => {
+    setSyncing(true)
+    try {
+      const { data } = await api.post('/api/v1/templates/sync')
+      const { synced } = data.data
+      await fetchTemplates()
+      toast.success(`${synced} approved template${synced !== 1 ? 's' : ''} synced from Meta.`)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Sync failed. Check your WABA credentials.')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   /* CRUD */
   const handleSave = async (form) => {
@@ -754,12 +788,12 @@ export default function Templates() {
       if (form.status === 'pending') {
         await api.post(`/api/v1/templates/${saved.id}/submit`)
         setTemplates((ts) => ts.map((t) => t.id === saved.id ? { ...t, status: 'pending' } : t))
-        showToast('Template submitted for Meta approval.')
+        toast.success('Template submitted for review. Admin will forward it to Meta once approved.')
       } else {
-        showToast('Template saved as draft.')
+        toast.success('Template saved as draft.')
       }
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to save template.')
+      toast.error(err.response?.data?.message || 'Failed to save template.')
     }
     setEditTarget(null)
     setDrawerOpen(false)
@@ -775,9 +809,9 @@ export default function Templates() {
     try {
       const { data } = await api.post('/api/v1/templates', payload)
       setTemplates((ts) => [normalizeTemplate(data.data.template), ...ts])
-      showToast('Template duplicated as draft.')
+      toast.success('Template duplicated as draft.')
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to duplicate template.')
+      toast.error(err.response?.data?.message || 'Failed to duplicate template.')
     }
   }
 
@@ -785,9 +819,9 @@ export default function Templates() {
     try {
       await api.delete(`/api/v1/templates/${id}`)
       setTemplates((ts) => ts.filter((t) => t.id !== id))
-      showToast('Template deleted.')
+      toast.success('Template deleted.')
     } catch {
-      showToast('Failed to delete template.')
+      toast.error('Failed to delete template.')
     }
   }
 
@@ -795,9 +829,9 @@ export default function Templates() {
     try {
       await api.post(`/api/v1/templates/${id}/submit`)
       setTemplates((ts) => ts.map((t) => t.id === id ? { ...t, status: 'pending' } : t))
-      showToast('Template submitted for Meta approval.')
+      toast.success('Template submitted for review. Admin will forward it to Meta once approved.')
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to submit template.')
+      toast.error(err.response?.data?.message || 'Failed to submit template.')
     }
   }
 
@@ -811,29 +845,28 @@ export default function Templates() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <PageHeader title="Templates" description="Create and manage WhatsApp Business message templates" />
-        <motion.button
-          whileTap={{ scale: 0.97 }}
-          onClick={openCreate}
-          className="flex items-center gap-1.5 px-4 py-2 bg-green-100 text-gray-800 border-2 border-green-400 shadow-sm shadow-green-500 hover:bg-white/45 text-sm font-medium rounded-lg shrink-0"
-          style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
-        >
-          <Plus size={14} /> New Template
-        </motion.button>
-      </div>
-
-      {/* Toast */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.18, ease: EASE_OUT }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-green-50 border border-green-200 rounded-xl text-sm font-medium text-green-800"
+        <div className="flex items-center gap-2 shrink-0">
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={handleSync}
+            disabled={syncing}
+            title="Pull already-approved templates from your Meta WABA into this dashboard"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
           >
-            <CheckCircle2 size={14} className="text-green-600 shrink-0" /> {toast}
-            <button onClick={() => setToast(null)} className="ml-auto text-gray-400 hover:text-gray-600"><X size={12} /></button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing…' : 'Sync from Meta'}
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={openCreate}
+            className="flex items-center gap-1.5 px-4 py-2 bg-green-100 text-gray-800 border-2 border-green-400 shadow-sm shadow-green-500 hover:bg-white/45 text-sm font-medium rounded-lg"
+            style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
+          >
+            <Plus size={14} /> New Template
+          </motion.button>
+        </div>
+      </div>
 
       {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">

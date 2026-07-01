@@ -1,6 +1,6 @@
 const router = require('express').Router()
 const {
-  getConversations, getMessages, sendMessage, updateConversation, simulateIncoming,
+  getConversations, getMessages, sendMessage, updateConversation, simulateIncoming, startConversation,
 } = require('../controllers/conversation.controller')
 const { protect } = require('../middleware/auth.middleware')
 const { devLimiter } = require('../middleware/rateLimiter.middleware')
@@ -8,6 +8,7 @@ const { devLimiter } = require('../middleware/rateLimiter.middleware')
 router.use(protect)
 
 router.get('/',                  getConversations)
+router.post('/',                 startConversation)       // must be before /:id routes
 router.get('/:id/messages',      getMessages)
 router.post('/:id/messages',     sendMessage)
 router.patch('/:id',             updateConversation)

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Users, Megaphone, MessageSquare, Bot, TrendingUp } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { Users, Megaphone, MessageSquare, Bot, TrendingUp, CheckCircle2, Circle, ExternalLink, ChevronDown, ChevronUp, Rocket } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import LineChart from '../../../components/charts/LineChart'
 import PieChart from '../../../components/charts/PieChart'
 import PageHeader from '../../../components/layout/PageHeader'
 import Button from '../../../components/ui/Button'
 import { useNavigate } from 'react-router-dom'
 import axiosInstance from '../../../api/axios'
+import useAuthStore from '../../../store/authStore'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
 
@@ -117,8 +118,139 @@ function UsageCard({ limits, usage, plan, index }) {
   )
 }
 
+/* ─── Go Live Checklist ──────────────────────────────────── */
+
+function GoLiveCard({ isOnboarded, waConnected }) {
+  const [collapsed, setCollapsed] = useState(false)
+
+  const steps = [
+    {
+      id: 'account',
+      label: 'Create your account',
+      done: true,
+      hint: null,
+      link: null,
+    },
+    {
+      id: 'business',
+      label: 'Complete business details',
+      done: isOnboarded,
+      hint: 'Add your business name and industry so your profile is ready for WhatsApp.',
+      link: null,
+    },
+    {
+      id: 'whatsapp',
+      label: 'Connect your WhatsApp number',
+      done: waConnected,
+      hint: 'Link a WhatsApp Business phone number via the setup wizard.',
+      link: null,
+    },
+    {
+      id: 'verify',
+      label: 'Verify your Meta Business account',
+      done: false,
+      hint: 'Required to message any customer — not just test numbers. Takes 1–3 business days.',
+      link: { label: 'Open Meta Business Manager', url: 'https://business.facebook.com/settings/security' },
+    },
+    {
+      id: 'whitelist',
+      label: 'Add test numbers (sandbox only)',
+      done: false,
+      hint: "Until your account is verified, add each recipient's number to your allowed list so test messages go through.",
+      link: { label: 'Open Meta Developer Portal', url: 'https://developers.facebook.com/apps' },
+    },
+  ]
+
+  const doneCount  = steps.filter(s => s.done).length
+  const allLocal   = isOnboarded && waConnected
+  const pct        = Math.round((doneCount / steps.length) * 100)
+
+  // Hide once local steps are done and user has collapsed — they can check Meta steps themselves
+  if (allLocal && collapsed) return null
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: EASE_OUT }}
+      className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden"
+    >
+      {/* Header */}
+      <button
+        onClick={() => setCollapsed(v => !v)}
+        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-amber-50/40 transition-colors"
+      >
+        <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+          <Rocket size={15} className="text-amber-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-900">Go Live Checklist</p>
+          <p className="text-xs text-gray-400 mt-0.5">{doneCount} of {steps.length} steps complete</p>
+        </div>
+        {/* Progress bar */}
+        <div className="hidden sm:block w-28 shrink-0">
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-amber-400 transition-all duration-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <p className="text-xs text-gray-400 mt-1 text-right">{pct}%</p>
+        </div>
+        {collapsed ? <ChevronDown size={15} className="text-gray-400 shrink-0" /> : <ChevronUp size={15} className="text-gray-400 shrink-0" />}
+      </button>
+
+      {/* Steps */}
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: EASE_OUT }}
+            className="overflow-hidden"
+          >
+            <div className="px-5 pb-5 space-y-3 border-t border-amber-100">
+              {steps.map((step, i) => (
+                <div key={step.id} className={`flex gap-3 pt-3 ${i === 0 ? '' : ''}`}>
+                  <div className="shrink-0 mt-0.5">
+                    {step.done
+                      ? <CheckCircle2 size={17} className="text-green-500" />
+                      : <Circle size={17} className="text-gray-300" />
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${step.done ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                      {step.label}
+                    </p>
+                    {!step.done && step.hint && (
+                      <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{step.hint}</p>
+                    )}
+                    {!step.done && step.link && (
+                      <a
+                        href={step.link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium hover:text-amber-800 mt-1.5 transition-colors"
+                      >
+                        {step.link.label} <ExternalLink size={11} />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
+  const { user, isOnboarded } = useAuthStore()
+  const waConnected = !!user?.tenant?.whatsapp?.phoneNumber
   const [stats, setStats] = useState(null)
   const [trend, setTrend] = useState([])
   const [delivery, setDelivery] = useState(null)
@@ -152,6 +284,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" description="Your WhatsApp automation overview" />
+
+      <GoLiveCard isOnboarded={isOnboarded} waConnected={waConnected} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
         <SimpleKPI index={0} loading={loading} title="Total Contacts"        value={(stats?.totalContacts ?? 0).toLocaleString()} delta="+this month" deltaType="positive" icon={Users} />

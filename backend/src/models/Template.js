@@ -1,10 +1,12 @@
 const mongoose = require('mongoose')
 
 const componentSchema = new mongoose.Schema({
-  type: { type: String, enum: ['HEADER', 'BODY', 'FOOTER', 'BUTTONS'], required: true },
-  text: { type: String, trim: true, maxlength: 1024 },
+  type:    { type: String, enum: ['HEADER', 'BODY', 'FOOTER', 'BUTTONS'], required: true },
+  format:  { type: String, default: null },  // Meta HEADER format: TEXT | IMAGE | VIDEO | DOCUMENT
+  text:    { type: String, trim: true, maxlength: 1024 },
   variables: { type: [String], default: [] },
-  buttons: [{ type: { type: String }, text: String, url: String, phoneNumber: String }],
+  example: { type: mongoose.Schema.Types.Mixed, default: null }, // Meta example data (body_text / header_url)
+  buttons: [{ type: { type: String }, text: String, url: String, phone_number: String }],
 }, { _id: false })
 
 const templateSchema = new mongoose.Schema(
