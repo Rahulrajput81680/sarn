@@ -1,8 +1,10 @@
 const Template = require('../models/Template')
 const Tenant   = require('../models/Tenant')
+const User     = require('../models/User')
 const asyncHandler = require('../utils/asyncHandler')
 const { success }  = require('../utils/apiResponse')
 const waService    = require('../services/whatsapp/whatsapp.service')
+const { sendEmail, newTemplateSubmittedEmail, templateApprovedEmail, templateRejectedEmail } = require('../utils/emailService')
 
 // Guard: all template routes require a tenant-linked account (not super_admin)
 const requireTenant = (req, res, next) => {
@@ -89,6 +91,17 @@ const submitTemplate = asyncHandler(async (req, res) => {
   template.rejectionReason = null
   template.rejectionNote   = null
   await template.save()
+
+  // Notify super_admin by email
+  const tenant = await Tenant.findById(req.tenantId).lean()
+  const admin  = await User.findOne({ role: 'super_admin' }).lean()
+  if (admin) {
+    sendEmail({
+      to: admin.email,
+      subject: `New template pending review — ${template.name}`,
+      html: newTemplateSubmittedEmail(template.name, tenant?.name || 'A client'),
+    }).catch(() => {})
+  }
 
   return success(res, { template }, 'Template submitted for admin review')
 })
@@ -185,6 +198,27 @@ async function handleTemplateStatusWebhook(event) {
 
   if (updated) {
     console.log(`[Template Webhook] "${message_template_name}" → ${dbStatus} (id: ${message_template_id})`)
+
+    // Email the tenant owner when Meta confirms APPROVED or REJECTED
+    if (dbStatus === 'APPROVED' || dbStatus === 'REJECTED') {
+      const owner = await User.findOne({ tenant: updated.tenant, role: { $in: ['admin', 'agent'] } }).lean()
+      if (owner) {
+        const tenant = await Tenant.findById(updated.tenant).lean()
+        if (dbStatus === 'APPROVED') {
+          sendEmail({
+            to:      owner.email,
+            subject: `Template "${message_template_name}" approved by Meta!`,
+            html:    templateApprovedEmail(message_template_name, tenant?.name || owner.name),
+          }).catch(() => {})
+        } else {
+          sendEmail({
+            to:      owner.email,
+            subject: `Template "${message_template_name}" was rejected by Meta`,
+            html:    templateRejectedEmail(message_template_name, tenant?.name || owner.name, 'Rejected by Meta during review'),
+          }).catch(() => {})
+        }
+      }
+    }
   } else {
     // Template not in DB yet — upsert it so it appears automatically
     // We need a tenantId: fall back to the first tenant with this WABA

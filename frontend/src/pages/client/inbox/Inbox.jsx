@@ -7,7 +7,7 @@ import {
   FileText, MoreVertical, Phone, Circle,
   Smile, AtSign, ChevronDown, Clock, AlertTriangle,
   LayoutTemplate, ArrowLeft, Plus, MessageSquarePlus,
-  ChevronLeft,
+  ChevronLeft, Image, Video, Music, Download, Info,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import axiosInstance from '../../../api/axios'
@@ -124,6 +124,49 @@ function ConvItem({ c, active, onClick, team }) {
   )
 }
 
+/* ─── Media preview inside bubble ───────────────────────────*/
+
+function MediaContent({ msg }) {
+  const [mediaUrl, setMediaUrl] = useState(msg.mediaUrl)
+  const [loading,  setLoading]  = useState(false)
+
+  // If mediaUrl looks like a Meta media ID (no slashes/dots), fetch the real URL
+  useEffect(() => {
+    if (!msg.mediaUrl || msg.mediaUrl.includes('/') || msg.mediaUrl.includes('.')) return
+    setLoading(true)
+    axiosInstance.get(`/api/v1/conversations/media/${msg.mediaUrl}`)
+      .then(({ data }) => setMediaUrl(data.data?.url || msg.mediaUrl))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [msg.mediaUrl])
+
+  if (loading) return <div className="w-48 h-32 bg-black/10 rounded-lg animate-pulse" />
+
+  if (msg.mediaType === 'image') {
+    return (
+      <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className="block">
+        <img src={mediaUrl} alt="media" className="max-w-[220px] rounded-xl mb-1 cursor-pointer hover:opacity-90 transition-opacity" />
+      </a>
+    )
+  }
+  if (msg.mediaType === 'video') {
+    return <video src={mediaUrl} controls className="max-w-[220px] rounded-xl mb-1" />
+  }
+  if (msg.mediaType === 'audio') {
+    return <audio src={mediaUrl} controls className="max-w-[220px] mb-1" />
+  }
+  if (msg.mediaType === 'document') {
+    return (
+      <a href={mediaUrl} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-2 px-3 py-2 mb-1 bg-black/10 rounded-lg hover:bg-black/15 transition-colors text-xs font-medium">
+        <FileText size={14} /> <span className="truncate max-w-[160px]">{msg.text || 'Document'}</span>
+        <Download size={12} className="ml-auto shrink-0" />
+      </a>
+    )
+  }
+  return null
+}
+
 /* ─── Message bubble ─────────────────────────────────────── */
 
 function MsgBubble({ msg, team }) {
@@ -150,7 +193,23 @@ function MsgBubble({ msg, team }) {
     )
   }
 
+  if (msg.type === 'system') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18, ease: EASE_OUT }}
+        className="flex justify-center"
+      >
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-full text-xs text-gray-500">
+          <Info size={10} /> {msg.text}
+        </div>
+      </motion.div>
+    )
+  }
+
   const isAgent = msg.type === 'agent'
+  const hasMedia = msg.mediaType && msg.mediaUrl
 
   return (
     <motion.div
@@ -160,14 +219,17 @@ function MsgBubble({ msg, team }) {
       className={`flex gap-2 ${isAgent ? 'flex-row-reverse' : 'flex-row'}`}
     >
       {!isAgent && <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center shrink-0 self-end"><User size={13} className="text-gray-500" /></div>}
-      <div className={`max-w-[68%] group`}>
-        <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-          isAgent
-            ? 'bg-green-600 text-white rounded-br-sm'
-            : 'bg-white border border-gray-100 text-gray-900 rounded-bl-sm shadow-sm'
-        }`}>
-          {msg.text}
-        </div>
+      <div className="max-w-[68%] group">
+        {hasMedia && <MediaContent msg={msg} />}
+        {(!hasMedia || msg.text) && (
+          <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+            isAgent
+              ? 'bg-green-600 text-white rounded-br-sm'
+              : 'bg-white border border-gray-100 text-gray-900 rounded-bl-sm shadow-sm'
+          } ${hasMedia ? 'mt-1' : ''}`}>
+            {msg.text}
+          </div>
+        )}
         <div className={`flex items-center gap-1 mt-0.5 ${isAgent ? 'justify-end' : 'justify-start'}`}>
           <span className="text-xs text-gray-400">{msg.time}</span>
           {isAgent && (
@@ -443,12 +505,14 @@ const normalizeConv = (c) => ({
 })
 
 const normalizeMsg = (m) => ({
-  id: m._id,
-  type: m.type,
-  text: m.text,
-  time: fmtTime(m.timestamp || m.createdAt),
-  status: m.status,
-  agent: m.sentBy?._id || m.sentBy || null,
+  id:        m._id,
+  type:      m.type,
+  text:      m.text,
+  mediaUrl:  m.mediaUrl  || null,
+  mediaType: m.mediaType || null,
+  time:      fmtTime(m.timestamp || m.createdAt),
+  status:    m.status,
+  agent:     m.sentBy?._id || m.sentBy || null,
 })
 
 /* ─── New Conversation Modal ─────────────────────────────── */
@@ -747,7 +811,10 @@ export default function Inbox() {
   const [sending,     setSending]     = useState(false)
   const [showList,    setShowList]    = useState(true)
   const [showNewConv, setShowNewConv] = useState(false)
-  const msgEndRef = useRef(null)
+  const [mediaFile,   setMediaFile]   = useState(null)   // { file, preview, type }
+  const [sendingMedia, setSendingMedia] = useState(false)
+  const msgEndRef  = useRef(null)
+  const fileInputRef = useRef(null)
 
   const conv     = convs.find((c) => c.id === activeId)
   const msgs     = messages[activeId] || []
@@ -841,6 +908,38 @@ export default function Inbox() {
     if (filterTab === 'resolved') return c.status === 'resolved'
     return true
   })
+
+  const handleMediaSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+    setMediaFile({ file, preview, name: file.name, mimeType: file.type })
+    e.target.value = ''
+  }
+
+  const handleSendMedia = async () => {
+    if (!mediaFile || sendingMedia) return
+    setSendingMedia(true)
+    const form = new FormData()
+    form.append('file', mediaFile.file)
+    if (replyText.trim()) form.append('caption', replyText.trim())
+    try {
+      const { data } = await axiosInstance.post(
+        `/api/v1/conversations/${activeId}/messages/media`,
+        form,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      )
+      const newMsg = normalizeMsg(data.data.message)
+      setMessages(m => ({ ...m, [activeId]: [...(m[activeId] || []), newMsg] }))
+      setConvs(cs => cs.map(c => c.id === activeId ? { ...c, lastMsg: newMsg.text } : c))
+      setMediaFile(null)
+      setReplyText('')
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send file')
+    } finally {
+      setSendingMedia(false)
+    }
+  }
 
   const handleSend = async () => {
     if (!replyText.trim() || sending) return
@@ -1134,36 +1233,88 @@ export default function Inbox() {
                 />
               </div>
 
+              {/* Media preview bar */}
+              <AnimatePresence>
+                {mediaFile && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="flex items-center gap-2 mb-2 p-2 bg-green-50 border border-green-200 rounded-xl overflow-hidden"
+                  >
+                    {mediaFile.preview
+                      ? <img src={mediaFile.preview} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                      : <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
+                          <FileText size={16} className="text-green-600" />
+                        </div>
+                    }
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-800 truncate">{mediaFile.name}</p>
+                      <p className="text-[10px] text-gray-400 capitalize">{mediaFile.mimeType.split('/')[0]}</p>
+                    </div>
+                    <button onClick={() => setMediaFile(null)} className="p-1 rounded-lg hover:bg-green-100 text-gray-400">
+                      <X size={13} />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Toolbar */}
               <div className="flex items-center justify-between mt-2">
                 <div className="flex items-center gap-1">
+                  {!mediaFile && (
+                    <button
+                      onClick={() => setShowCanned((s) => !s)}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors ${showCanned ? 'bg-green-50 border-green-300 text-green-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
+                    >
+                      <Zap size={11} /> Quick replies
+                    </button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,video/mp4,audio/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                    className="hidden"
+                    onChange={handleMediaSelect}
+                  />
                   <button
-                    onClick={() => setShowCanned((s) => !s)}
-                    className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors ${showCanned ? 'bg-green-50 border-green-300 text-green-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`p-1.5 rounded-lg transition-colors ${mediaFile ? 'text-green-600 bg-green-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                    title="Attach file"
                   >
-                    <Zap size={11} /> Quick replies
-                  </button>
-                  <button className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
                     <Paperclip size={14} />
                   </button>
                   <button className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
                     <Smile size={14} />
                   </button>
                 </div>
-                <motion.button
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleSend}
-                  disabled={!replyText.trim()}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed ${
-                    replyMode === 'note'
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-green-600 text-white'
-                  }`}
-                  style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
-                >
-                  {replyMode === 'note' ? <Lock size={12} /> : <Send size={12} />}
-                  {replyMode === 'note' ? 'Add Note' : 'Send'}
-                </motion.button>
+                {mediaFile ? (
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleSendMedia}
+                    disabled={sendingMedia}
+                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-green-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
+                  >
+                    <Send size={12} />
+                    {sendingMedia ? 'Sending…' : 'Send File'}
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleSend}
+                    disabled={!replyText.trim()}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed ${
+                      replyMode === 'note'
+                        ? 'bg-amber-500 text-white'
+                        : 'bg-green-600 text-white'
+                    }`}
+                    style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
+                  >
+                    {replyMode === 'note' ? <Lock size={12} /> : <Send size={12} />}
+                    {replyMode === 'note' ? 'Add Note' : 'Send'}
+                  </motion.button>
+                )}
               </div>
             </div>
           </>

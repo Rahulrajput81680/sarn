@@ -91,10 +91,31 @@ async function getWABAInfo(accessToken) {
   return data.data || []
 }
 
+async function sendMediaMessage({ to, mediaType, mediaUrl, caption = '', config }) {
+  const payload = { link: mediaUrl }
+  if (caption) payload.caption = caption
+  const { data } = await getClient(config).post(`/${config.phoneNumberId}/messages`, {
+    messaging_product: 'whatsapp',
+    recipient_type:    'individual',
+    to:                formatPhone(to),
+    type:              mediaType,
+    [mediaType]:       payload,
+  })
+  return { messageId: data.messages[0].id, status: 'sent', timestamp: new Date() }
+}
+
+// Exchanges a Meta media ID for a temporary download URL
+async function getMediaUrl(mediaId, config) {
+  const { data } = await getClient(config).get(`/${mediaId}`)
+  return { url: data.url, mimeType: data.mime_type }
+}
+
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
+  sendMediaMessage,
   getMessageStatus,
+  getMediaUrl,
   submitTemplate,
   fetchTemplates,
   exchangeCodeForToken,

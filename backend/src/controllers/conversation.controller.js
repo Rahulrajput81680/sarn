@@ -1,3 +1,4 @@
+const path = require('path')
 const Conversation = require('../models/Conversation')
 const Message = require('../models/Message')
 const Contact = require('../models/Contact')
@@ -7,6 +8,7 @@ const asyncHandler = require('../utils/asyncHandler')
 const { success } = require('../utils/apiResponse')
 const waService = require('../services/whatsapp/whatsapp.service')
 const { translateMetaError } = require('../utils/metaErrors')
+const { mimeToMediaType } = require('../utils/multerConfig')
 
 // GET /api/v1/conversations
 const getConversations = asyncHandler(async (req, res) => {
@@ -273,4 +275,83 @@ const startConversation = asyncHandler(async (req, res) => {
   return success(res, { conversation: populated, message }, 'Conversation started', 201)
 })
 
-module.exports = { getConversations, getMessages, sendMessage, updateConversation, simulateIncoming, startConversation }
+// POST /api/v1/conversations/:id/messages/media — upload + send a media message
+const sendMediaMessage = asyncHandler(async (req, res) => {
+  const conv = await Conversation.findOne({ _id: req.params.id, tenant: req.tenantId }).populate('contact')
+  if (!conv) return res.status(404).json({ success: false, message: 'Conversation not found' })
+
+  if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' })
+
+  const windowOpen = conv.window?.open && conv.window?.expiresAt && new Date(conv.window.expiresAt) > new Date()
+  if (!windowOpen) {
+    return res.status(422).json({
+      success: false,
+      message: 'The 24-hour messaging window has expired. Use an approved template to re-engage.',
+      code: 'WINDOW_EXPIRED',
+    })
+  }
+
+  const tenant = await Tenant.findById(req.tenantId).select('limits usage').lean()
+  if (tenant.usage.messages >= tenant.limits.messages) {
+    return res.status(429).json({ success: false, message: 'Message limit reached. Upgrade your plan.', code: 'LIMIT_REACHED' })
+  }
+
+  const mediaType = mimeToMediaType(req.file.mimetype)
+  const caption   = req.body.caption || ''
+  const backendUrl = process.env.APP_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`
+  const publicUrl  = `${backendUrl}/uploads/media/${req.file.filename}`
+
+  let waMessageId = null
+  let status = 'sent'
+  try {
+    const result = await waService.sendMediaMessage(req.tenantId, {
+      to:       conv.contact.phone,
+      mediaType,
+      mediaUrl: publicUrl,
+      caption,
+    })
+    waMessageId = result.messageId
+    status      = result.status
+    await Tenant.findByIdAndUpdate(req.tenantId, { $inc: { 'usage.messages': 1 } })
+  } catch (err) {
+    return res.status(502).json({ success: false, message: translateMetaError(err), code: err.response?.data?.error?.code })
+  }
+
+  const message = await Message.create({
+    conversation: conv._id,
+    tenant:       req.tenantId,
+    type:         'agent',
+    text:         caption || `[${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}]`,
+    mediaUrl:     publicUrl,
+    mediaType,
+    status,
+    sentBy:       req.user._id,
+    waMessageId,
+    timestamp:    new Date(),
+  })
+
+  const populated = await message.populate('sentBy', 'name avatar')
+
+  await Conversation.findByIdAndUpdate(conv._id, {
+    lastMessage: { text: message.text, type: 'agent', time: new Date() },
+    updatedAt:   new Date(),
+  })
+
+  getIO().to(`conv:${conv._id}`).emit('new_message', { message: populated })
+
+  return success(res, { message: populated }, 'Media sent', 201)
+})
+
+// GET /api/v1/conversations/media/:mediaId — proxy Meta media download URL
+const getMediaUrlProxy = asyncHandler(async (req, res) => {
+  const { mediaId } = req.params
+  if (!mediaId) return res.status(400).json({ success: false, message: 'mediaId is required' })
+  try {
+    const { url, mimeType } = await waService.getMediaUrl(req.tenantId, mediaId)
+    return success(res, { url, mimeType })
+  } catch (err) {
+    return res.status(502).json({ success: false, message: 'Failed to retrieve media URL' })
+  }
+})
+
+module.exports = { getConversations, getMessages, sendMessage, sendMediaMessage, getMediaUrlProxy, updateConversation, simulateIncoming, startConversation }

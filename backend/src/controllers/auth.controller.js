@@ -4,6 +4,7 @@ const Tenant = require('../models/Tenant')
 const { signToken } = require('../utils/generateToken')
 const asyncHandler = require('../utils/asyncHandler')
 const { success } = require('../utils/apiResponse')
+const { sendEmail, welcomeEmail, passwordResetEmail } = require('../utils/emailService')
 
 // POST /api/v1/auth/register
 const register = asyncHandler(async (req, res) => {
@@ -39,6 +40,9 @@ const register = asyncHandler(async (req, res) => {
   await user.save({ validateBeforeSave: false })
 
   const token = signToken({ id: user._id, role: user.role, tenantId: tenant._id })
+
+  // Send welcome email (non-blocking)
+  sendEmail({ to: user.email, subject: 'Welcome to SARN Connect!', html: welcomeEmail(user.name) }).catch(() => {})
 
   return success(res, {
     token,
@@ -124,20 +128,17 @@ const forgotPassword = asyncHandler(async (req, res) => {
 
   const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${rawToken}`
 
-  if (process.env.NODE_ENV !== 'production') {
-    // In development: return the URL directly so you can test without an email service
-    console.log('[Auth] Password reset URL (dev only):', resetUrl)
-    return success(res, { resetUrl }, genericMsg)
-  }
+  // Send reset email — works in both dev and production when EMAIL_USER is set
+  await sendEmail({
+    to:      user.email,
+    subject: 'Reset your SARN Connect password',
+    html:    passwordResetEmail(user.name, resetUrl),
+  })
 
-  // Production: integrate your email service here (SendGrid, Nodemailer, Resend, etc.)
-  // Example:
-  //   await sendEmail({ to: user.email, subject: 'Reset your password', html: `<a href="${resetUrl}">Reset</a>` })
-  // Until an email service is wired up, we clear the token so it doesn't persist unused
-  user.passwordResetToken   = undefined
-  user.passwordResetExpires = undefined
-  await user.save({ validateBeforeSave: false })
-  console.error('[Auth] Email service not configured — password reset not sent for', user.email)
+  // In development also log the URL so you can test without email config
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[Auth] Password reset URL (dev):', resetUrl)
+  }
 
   return success(res, {}, genericMsg)
 })
