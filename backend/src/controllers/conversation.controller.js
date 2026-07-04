@@ -1,3 +1,4 @@
+const path = require('path')
 const Conversation = require('../models/Conversation')
 const Message = require('../models/Message')
 const Contact = require('../models/Contact')
@@ -6,6 +7,8 @@ const { getIO } = require('../config/socket')
 const asyncHandler = require('../utils/asyncHandler')
 const { success } = require('../utils/apiResponse')
 const waService = require('../services/whatsapp/whatsapp.service')
+const { translateMetaError } = require('../utils/metaErrors')
+const { mimeToMediaType } = require('../utils/multerConfig')
 
 // GET /api/v1/conversations
 const getConversations = asyncHandler(async (req, res) => {
@@ -194,4 +197,161 @@ const simulateIncoming = asyncHandler(async (req, res) => {
   return success(res, { message: msg, conversation: conv, contact }, 'Incoming message simulated')
 })
 
-module.exports = { getConversations, getMessages, sendMessage, updateConversation, simulateIncoming }
+// POST /api/v1/conversations — initiate an outbound conversation via approved template
+const startConversation = asyncHandler(async (req, res) => {
+  const { contactId, templateName, language = 'en', variables = [] } = req.body
+  if (!contactId || !templateName) {
+    return res.status(400).json({ success: false, message: 'contactId and templateName are required' })
+  }
+
+  const contact = await Contact.findOne({ _id: contactId, tenant: req.tenantId })
+  if (!contact) return res.status(404).json({ success: false, message: 'Contact not found' })
+  if (!contact.isOptedIn) {
+    return res.status(403).json({ success: false, message: 'This contact has opted out and cannot be messaged.' })
+  }
+
+  const tenant = await Tenant.findById(req.tenantId).select('limits usage').lean()
+  if (tenant.usage.messages >= tenant.limits.messages) {
+    return res.status(429).json({ success: false, message: 'Message limit reached. Upgrade your plan.', code: 'LIMIT_REACHED' })
+  }
+
+  // Build WhatsApp runtime components from variable values
+  const components = variables.length
+    ? [{ type: 'body', parameters: variables.map(v => ({ type: 'text', text: String(v) })) }]
+    : []
+
+  let waMessageId = null
+  try {
+    const result = await waService.sendTemplateMessage(req.tenantId, {
+      to: contact.phone,
+      templateName,
+      language,
+      components,
+    })
+    waMessageId = result.messageId
+    await Tenant.findByIdAndUpdate(req.tenantId, { $inc: { 'usage.messages': 1 } })
+  } catch (err) {
+    return res.status(502).json({ success: false, message: translateMetaError(err), code: err.response?.data?.error?.code })
+  }
+
+  // Find open conversation or create new one
+  let conv = await Conversation.findOne({ tenant: req.tenantId, contact: contact._id, status: 'open' })
+  if (!conv) {
+    conv = await Conversation.create({
+      tenant: req.tenantId,
+      contact: contact._id,
+      status: 'open',
+      window: { open: false, expiresAt: null }, // window opens when contact replies
+    })
+  }
+
+  const displayText = variables.length
+    ? `[Template: ${templateName}] ${variables.join(' · ')}`
+    : `[Template: ${templateName}]`
+
+  const message = await Message.create({
+    conversation: conv._id,
+    tenant: req.tenantId,
+    type: 'agent',
+    text: displayText,
+    status: 'sent',
+    sentBy: req.user._id,
+    waMessageId,
+    timestamp: new Date(),
+  })
+
+  await Conversation.findByIdAndUpdate(conv._id, {
+    lastMessage: { text: displayText, type: 'agent', time: new Date() },
+    updatedAt: new Date(),
+  })
+
+  const populated = await Conversation.findById(conv._id)
+    .populate('contact', 'name phone avatar')
+    .populate('assignee', 'name avatar')
+    .lean()
+
+  getIO().to(`tenant:${req.tenantId}`).emit('new_conversation_message', { conversationId: conv._id, message, contact })
+
+  return success(res, { conversation: populated, message }, 'Conversation started', 201)
+})
+
+// POST /api/v1/conversations/:id/messages/media — upload + send a media message
+const sendMediaMessage = asyncHandler(async (req, res) => {
+  const conv = await Conversation.findOne({ _id: req.params.id, tenant: req.tenantId }).populate('contact')
+  if (!conv) return res.status(404).json({ success: false, message: 'Conversation not found' })
+
+  if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' })
+
+  const windowOpen = conv.window?.open && conv.window?.expiresAt && new Date(conv.window.expiresAt) > new Date()
+  if (!windowOpen) {
+    return res.status(422).json({
+      success: false,
+      message: 'The 24-hour messaging window has expired. Use an approved template to re-engage.',
+      code: 'WINDOW_EXPIRED',
+    })
+  }
+
+  const tenant = await Tenant.findById(req.tenantId).select('limits usage').lean()
+  if (tenant.usage.messages >= tenant.limits.messages) {
+    return res.status(429).json({ success: false, message: 'Message limit reached. Upgrade your plan.', code: 'LIMIT_REACHED' })
+  }
+
+  const mediaType = mimeToMediaType(req.file.mimetype)
+  const caption   = req.body.caption || ''
+  const backendUrl = process.env.APP_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`
+  const publicUrl  = `${backendUrl}/uploads/media/${req.file.filename}`
+
+  let waMessageId = null
+  let status = 'sent'
+  try {
+    const result = await waService.sendMediaMessage(req.tenantId, {
+      to:       conv.contact.phone,
+      mediaType,
+      mediaUrl: publicUrl,
+      caption,
+    })
+    waMessageId = result.messageId
+    status      = result.status
+    await Tenant.findByIdAndUpdate(req.tenantId, { $inc: { 'usage.messages': 1 } })
+  } catch (err) {
+    return res.status(502).json({ success: false, message: translateMetaError(err), code: err.response?.data?.error?.code })
+  }
+
+  const message = await Message.create({
+    conversation: conv._id,
+    tenant:       req.tenantId,
+    type:         'agent',
+    text:         caption || `[${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}]`,
+    mediaUrl:     publicUrl,
+    mediaType,
+    status,
+    sentBy:       req.user._id,
+    waMessageId,
+    timestamp:    new Date(),
+  })
+
+  const populated = await message.populate('sentBy', 'name avatar')
+
+  await Conversation.findByIdAndUpdate(conv._id, {
+    lastMessage: { text: message.text, type: 'agent', time: new Date() },
+    updatedAt:   new Date(),
+  })
+
+  getIO().to(`conv:${conv._id}`).emit('new_message', { message: populated })
+
+  return success(res, { message: populated }, 'Media sent', 201)
+})
+
+// GET /api/v1/conversations/media/:mediaId — proxy Meta media download URL
+const getMediaUrlProxy = asyncHandler(async (req, res) => {
+  const { mediaId } = req.params
+  if (!mediaId) return res.status(400).json({ success: false, message: 'mediaId is required' })
+  try {
+    const { url, mimeType } = await waService.getMediaUrl(req.tenantId, mediaId)
+    return success(res, { url, mimeType })
+  } catch (err) {
+    return res.status(502).json({ success: false, message: 'Failed to retrieve media URL' })
+  }
+})
+
+module.exports = { getConversations, getMessages, sendMessage, sendMediaMessage, getMediaUrlProxy, updateConversation, simulateIncoming, startConversation }

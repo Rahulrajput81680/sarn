@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import PageHeader from '../../../components/layout/PageHeader'
 import TOSModal from '../../../components/bulk-messaging/TOSModal'
 import api from '../../../api/axios'
+import useAuthStore from '../../../store/authStore'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
 
@@ -602,6 +603,9 @@ function DeliveryBar({ value, total, color }) {
 const STEPS = ['Template', 'Recipients', 'Schedule', 'Review']
 
 export default function BulkMessaging() {
+  const { user } = useAuthStore()
+  const waConnected = !!user?.tenant?.whatsapp?.phoneNumber
+
   const [composing,  setComposing]  = useState(false)
   const [step,       setStep]       = useState(0)
   const [dir,        setDir]        = useState(1)
@@ -726,6 +730,26 @@ export default function BulkMessaging() {
     <StepSchedule data={schedule} onChange={setSchedule} onNext={goNext} onBack={goBack} />,
     <StepReview template={template} recipients={recipients} schedule={schedule} onBack={goBack} onSend={handleSend} />,
   ]
+
+  if (!waConnected) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Bulk Messaging" description="Send template-based messages to large contact lists" />
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-4">
+            <AlertTriangle size={28} className="text-amber-500" />
+          </div>
+          <h2 className="text-lg font-semibold text-gray-800 mb-1">WhatsApp not connected</h2>
+          <p className="text-sm text-gray-400 max-w-xs mb-6">
+            You need to connect your WhatsApp Business number before you can send bulk messages.
+          </p>
+          <p className="text-xs text-gray-400">
+            Click <span className="font-semibold text-amber-600">Complete Setup</span> in the banner above to connect your number.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

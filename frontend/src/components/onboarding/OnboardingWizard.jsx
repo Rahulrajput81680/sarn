@@ -488,7 +488,7 @@ function ConnectWhatsApp({ bizData, onFinish }) {
 
 /* ─── Main wizard ──────────────────────────────────────────── */
 
-export default function OnboardingWizard() {
+export default function OnboardingWizard({ onDismiss }) {
   const { setOnboarded, updateUser } = useAuthStore()
   const [step,        setStep]     = useState(0)
   const [dir,         setDir]      = useState(1)
@@ -515,6 +515,7 @@ export default function OnboardingWizard() {
 
   const handleEnterDashboard = () => {
     setOnboarded()
+    onDismiss?.()
   }
 
   return (

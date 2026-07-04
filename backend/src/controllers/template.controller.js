@@ -1,11 +1,25 @@
 const Template = require('../models/Template')
 const Tenant   = require('../models/Tenant')
+const User     = require('../models/User')
 const asyncHandler = require('../utils/asyncHandler')
 const { success }  = require('../utils/apiResponse')
 const waService    = require('../services/whatsapp/whatsapp.service')
+const { sendEmail, newTemplateSubmittedEmail, templateApprovedEmail, templateRejectedEmail } = require('../utils/emailService')
+
+// Guard: all template routes require a tenant-linked account (not super_admin)
+const requireTenant = (req, res, next) => {
+  if (!req.tenantId) {
+    return res.status(403).json({
+      success: false,
+      message: 'Your account is not linked to a business. Complete onboarding first.',
+    })
+  }
+  next()
+}
 
 // ── GET /api/v1/templates ─────────────────────────────────────────────────────
 const getTemplates = asyncHandler(async (req, res) => {
+  if (!req.tenantId) return success(res, { templates: [], total: 0 })
   const { status, category, page = 1, limit = 20 } = req.query
   const filter = { tenant: req.tenantId }
   if (status)   filter.status   = status.toUpperCase()
@@ -61,32 +75,35 @@ const deleteTemplate = asyncHandler(async (req, res) => {
 })
 
 // ── POST /api/v1/templates/:id/submit ────────────────────────────────────────
+// Client-side action: queues the template for admin review.
+// Does NOT touch Meta API — admin's approve action handles that.
 const submitTemplate = asyncHandler(async (req, res) => {
   const template = await Template.findOne({ _id: req.params.id, tenant: req.tenantId })
   if (!template) return res.status(404).json({ success: false, message: 'Template not found' })
   if (template.status === 'APPROVED') {
     return res.status(400).json({ success: false, message: 'Template is already approved' })
   }
-
-  const result = await waService.submitTemplate(req.tenantId, {
-    name:       template.name,
-    category:   template.category,
-    language:   template.language,
-    components: template.components,
-  })
-
-  template.status         = 'PENDING'
-  template.metaTemplateId = result.metaTemplateId
-  await template.save()
-
-  // Mock mode: auto-approve after 3 s to simulate Meta review
-  if (process.env.WA_PROVIDER !== 'meta') {
-    setTimeout(async () => {
-      await Template.findByIdAndUpdate(template._id, { status: 'APPROVED' })
-    }, 3000)
+  if (template.status === 'PENDING') {
+    return res.status(400).json({ success: false, message: 'Template is already pending review' })
   }
 
-  return success(res, { template }, 'Template submitted for approval')
+  template.status = 'PENDING'
+  template.rejectionReason = null
+  template.rejectionNote   = null
+  await template.save()
+
+  // Notify super_admin by email
+  const tenant = await Tenant.findById(req.tenantId).lean()
+  const admin  = await User.findOne({ role: 'super_admin' }).lean()
+  if (admin) {
+    sendEmail({
+      to: admin.email,
+      subject: `New template pending review — ${template.name}`,
+      html: newTemplateSubmittedEmail(template.name, tenant?.name || 'A client'),
+    }).catch(() => {})
+  }
+
+  return success(res, { template }, 'Template submitted for admin review')
 })
 
 // ── POST /api/v1/templates/sync ───────────────────────────────────────────────
@@ -110,13 +127,15 @@ const syncTemplatesFromMeta = asyncHandler(async (req, res) => {
     // Map Meta's component format → our DB componentSchema
     const components = (t.components || []).map(c => ({
       type:      c.type,
-      text:      c.text || '',
+      format:    c.format || null,
+      text:      c.text   || '',
       variables: (c.example?.body_text?.[0] || []).map((_, i) => String(i + 1)),
+      example:   c.example || null,
       buttons:   (c.buttons || []).map(b => ({
-        type:        b.type        || '',
-        text:        b.text        || '',
-        url:         b.url         || '',
-        phoneNumber: b.phone_number || '',
+        type:         b.type         || '',
+        text:         b.text         || '',
+        url:          b.url          || '',
+        phone_number: b.phone_number || '',
       })),
     }))
 
@@ -179,6 +198,27 @@ async function handleTemplateStatusWebhook(event) {
 
   if (updated) {
     console.log(`[Template Webhook] "${message_template_name}" → ${dbStatus} (id: ${message_template_id})`)
+
+    // Email the tenant owner when Meta confirms APPROVED or REJECTED
+    if (dbStatus === 'APPROVED' || dbStatus === 'REJECTED') {
+      const owner = await User.findOne({ tenant: updated.tenant, role: { $in: ['admin', 'agent'] } }).lean()
+      if (owner) {
+        const tenant = await Tenant.findById(updated.tenant).lean()
+        if (dbStatus === 'APPROVED') {
+          sendEmail({
+            to:      owner.email,
+            subject: `Template "${message_template_name}" approved by Meta!`,
+            html:    templateApprovedEmail(message_template_name, tenant?.name || owner.name),
+          }).catch(() => {})
+        } else {
+          sendEmail({
+            to:      owner.email,
+            subject: `Template "${message_template_name}" was rejected by Meta`,
+            html:    templateRejectedEmail(message_template_name, tenant?.name || owner.name, 'Rejected by Meta during review'),
+          }).catch(() => {})
+        }
+      }
+    }
   } else {
     // Template not in DB yet — upsert it so it appears automatically
     // We need a tenantId: fall back to the first tenant with this WABA
@@ -207,6 +247,7 @@ async function handleTemplateStatusWebhook(event) {
 }
 
 module.exports = {
+  requireTenant,
   getTemplates,
   createTemplate,
   updateTemplate,

@@ -63,10 +63,22 @@ async function getWABAInfo(accessToken) {
   ]
 }
 
+async function sendMediaMessage({ to, mediaType, mediaUrl, caption = '', config }) {
+  await delay(200)
+  return { messageId: `mock_${uuidv4()}`, status: 'sent', timestamp: new Date() }
+}
+
+async function getMediaUrl(mediaId, config) {
+  await delay(100)
+  return { url: `https://mock-cdn.example.com/media/${mediaId}`, mimeType: 'image/jpeg' }
+}
+
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
+  sendMediaMessage,
   getMessageStatus,
+  getMediaUrl,
   submitTemplate,
   fetchTemplates,
   exchangeCodeForToken,

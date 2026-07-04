@@ -4,6 +4,7 @@ const Tenant = require('../models/Tenant')
 const { signToken } = require('../utils/generateToken')
 const asyncHandler = require('../utils/asyncHandler')
 const { success } = require('../utils/apiResponse')
+const { sendEmail, welcomeEmail, passwordResetEmail } = require('../utils/emailService')
 
 // POST /api/v1/auth/register
 const register = asyncHandler(async (req, res) => {
@@ -16,8 +17,13 @@ const register = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' })
   }
 
-  const exists = await User.findOne({ email: email.toLowerCase().trim() })
-  if (exists) return res.status(409).json({ success: false, message: 'Email already registered' })
+  const exists = await User.findOne({ email: email.toLowerCase().trim() }).populate('tenant', 'isActive')
+  if (exists) {
+    if (!exists.isActive || exists.tenant?.isActive === false) {
+      return res.status(409).json({ success: false, message: 'This email belongs to a suspended account. Contact support to reactivate it.' })
+    }
+    return res.status(409).json({ success: false, message: 'Email already registered' })
+  }
 
   // Create user first (without tenant) so we have an ID
   const user = await User.create({ name, email, password, role: 'agent' })
@@ -34,6 +40,9 @@ const register = asyncHandler(async (req, res) => {
   await user.save({ validateBeforeSave: false })
 
   const token = signToken({ id: user._id, role: user.role, tenantId: tenant._id })
+
+  // Send welcome email (non-blocking)
+  sendEmail({ to: user.email, subject: 'Welcome to SARN Connect!', html: welcomeEmail(user.name) }).catch(() => {})
 
   return success(res, {
     token,
@@ -63,7 +72,11 @@ const login = asyncHandler(async (req, res) => {
   }
 
   if (!user.isActive) {
-    return res.status(403).json({ success: false, message: 'Your account has been deactivated. Contact support.' })
+    return res.status(403).json({ success: false, message: 'Your account has been suspended. Please contact support.' })
+  }
+
+  if (user.tenant?.isActive === false) {
+    return res.status(403).json({ success: false, message: 'Your account has been suspended. Please contact support.' })
   }
 
   user.lastLogin = new Date()
@@ -80,6 +93,9 @@ const login = asyncHandler(async (req, res) => {
       role: user.role,
       isOnboarded: user.isOnboarded,
       avatar: user.avatar,
+      businessName:  user.businessName  || '',
+      category:      user.category      || '',
+      waDisplayName: user.waDisplayName || '',
       tenant: user.tenant,
     },
   }, 'Login successful')
@@ -112,20 +128,17 @@ const forgotPassword = asyncHandler(async (req, res) => {
 
   const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${rawToken}`
 
-  if (process.env.NODE_ENV !== 'production') {
-    // In development: return the URL directly so you can test without an email service
-    console.log('[Auth] Password reset URL (dev only):', resetUrl)
-    return success(res, { resetUrl }, genericMsg)
-  }
+  // Send reset email — works in both dev and production when EMAIL_USER is set
+  await sendEmail({
+    to:      user.email,
+    subject: 'Reset your SARN Connect password',
+    html:    passwordResetEmail(user.name, resetUrl),
+  })
 
-  // Production: integrate your email service here (SendGrid, Nodemailer, Resend, etc.)
-  // Example:
-  //   await sendEmail({ to: user.email, subject: 'Reset your password', html: `<a href="${resetUrl}">Reset</a>` })
-  // Until an email service is wired up, we clear the token so it doesn't persist unused
-  user.passwordResetToken   = undefined
-  user.passwordResetExpires = undefined
-  await user.save({ validateBeforeSave: false })
-  console.error('[Auth] Email service not configured — password reset not sent for', user.email)
+  // In development also log the URL so you can test without email config
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[Auth] Password reset URL (dev):', resetUrl)
+  }
 
   return success(res, {}, genericMsg)
 })

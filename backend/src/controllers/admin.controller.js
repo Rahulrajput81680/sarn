@@ -10,6 +10,7 @@ const WebhookLog    = require('../models/WebhookLog')
 const asyncHandler  = require('../utils/asyncHandler')
 const { success }   = require('../utils/apiResponse')
 const waService     = require('../services/whatsapp/whatsapp.service')
+const { sendEmail, templateApprovedEmail, templateRejectedEmail, accountSuspendedEmail, accountReactivatedEmail } = require('../utils/emailService')
 
 // GET /api/v1/admin/dashboard
 const getDashboard = asyncHandler(async (req, res) => {
@@ -113,6 +114,30 @@ const updateTenant = asyncHandler(async (req, res) => {
 
   const tenant = await Tenant.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true }).populate('owner', 'name email')
   if (!tenant) return res.status(404).json({ success: false, message: 'Tenant not found' })
+
+  // Cascade suspension/reactivation to all users in this tenant
+  if (typeof isActive === 'boolean') {
+    await User.updateMany({ tenant: tenant._id }, { isActive })
+
+    // Email the owner about their account status change
+    const owner = await User.findById(tenant.owner).lean()
+    if (owner) {
+      if (!isActive) {
+        sendEmail({
+          to: owner.email,
+          subject: 'Your SARN Connect account has been suspended',
+          html: accountSuspendedEmail(owner.name, tenant.name),
+        }).catch(() => {})
+      } else {
+        sendEmail({
+          to: owner.email,
+          subject: 'Your SARN Connect account has been reactivated',
+          html: accountReactivatedEmail(owner.name, tenant.name),
+        }).catch(() => {})
+      }
+    }
+  }
+
   return success(res, { tenant }, 'Tenant updated')
 })
 
@@ -181,6 +206,18 @@ const reviewTemplate = asyncHandler(async (req, res) => {
     template.rejectionReason = reason || 'CUSTOM'
     if (note) template.rejectionNote = note
     await template.save()
+
+    // Notify the tenant owner by email
+    const owner = await User.findOne({ tenant: template.tenant, role: { $in: ['admin', 'agent'] } }).lean()
+    if (owner) {
+      const tenant = await Tenant.findById(template.tenant).lean()
+      sendEmail({
+        to: owner.email,
+        subject: `Template "${template.name}" was rejected`,
+        html: templateRejectedEmail(template.name, tenant?.name || owner.name, note || reason),
+      }).catch(() => {})
+    }
+
     return success(res, { template }, 'Template rejected')
   }
 
@@ -212,6 +249,20 @@ const reviewTemplate = asyncHandler(async (req, res) => {
   }
 
   await template.save()
+
+  // Notify owner only when Meta has confirmed approval (APPROVED status set immediately in mock/fallback)
+  if (template.status === 'APPROVED') {
+    const owner = await User.findOne({ tenant: template.tenant, role: { $in: ['admin', 'agent'] } }).lean()
+    if (owner) {
+      const ten = await Tenant.findById(template.tenant).lean()
+      sendEmail({
+        to: owner.email,
+        subject: `Template "${template.name}" approved!`,
+        html: templateApprovedEmail(template.name, ten?.name || owner.name),
+      }).catch(() => {})
+    }
+  }
+
   return success(res, { template }, 'Template approved and submitted to Meta for review')
 })
 

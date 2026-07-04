@@ -20,6 +20,16 @@ async function sendTemplateMessage(tenantId, opts) {
   return provider.sendTemplateMessage({ ...opts, config })
 }
 
+async function sendMediaMessage(tenantId, opts) {
+  const config = await getTenantWAConfig(tenantId)
+  return provider.sendMediaMessage({ ...opts, config })
+}
+
+async function getMediaUrl(tenantId, mediaId) {
+  const config = await getTenantWAConfig(tenantId)
+  return provider.getMediaUrl(mediaId, config)
+}
+
 // ── Template management ───────────────────────────────────────────────────────
 
 async function submitTemplate(tenantId, opts) {
@@ -48,6 +58,8 @@ async function getWABAInfo(accessToken) {
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
+  sendMediaMessage,
+  getMediaUrl,
   submitTemplate,
   fetchTemplates,
   exchangeCodeForToken,
