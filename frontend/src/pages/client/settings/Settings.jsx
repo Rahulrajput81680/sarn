@@ -4,7 +4,7 @@ import {
   Shield, Bell, Smartphone, Zap, Lock, AlertTriangle,
   Eye, EyeOff, Copy, RefreshCw, Check, LogOut, Trash2,
   Key, Webhook, Globe,
-  ChevronRight,
+  ChevronRight, CheckCircle2, XCircle, Clock, Unplug,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { toast } from 'sonner'
@@ -214,8 +214,168 @@ function NotificationsTab({ initialNotifs }) {
   )
 }
 
+/* ───────── WhatsApp connection status / connect / disconnect ───────── */
+const EXPIRY_WARNING_DAYS = 3
+
+function WhatsAppConnectionCard({ whatsapp, onChange }) {
+  const [form, setForm] = useState({ phoneNumberId: '', wabaId: '', accessToken: '' })
+  const [showToken, setShowToken] = useState(false)
+  const [connecting, setConnecting] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
+  const [error, setError] = useState('')
+
+  const isConnected = whatsapp?.status === 'connected'
+  const expiresAt = whatsapp?.tokenExpiresAt ? new Date(whatsapp.tokenExpiresAt) : null
+  const isExpired = expiresAt && expiresAt <= new Date()
+  const isExpiringSoon = expiresAt && !isExpired && expiresAt <= new Date(Date.now() + EXPIRY_WARNING_DAYS * 24 * 60 * 60 * 1000)
+
+  const handleConnect = async () => {
+    if (!form.phoneNumberId.trim() || !form.wabaId.trim() || !form.accessToken.trim()) return
+    setConnecting(true)
+    setError('')
+    try {
+      await axiosInstance.put('/api/v1/profile/wa-connect', {
+        phoneNumberId: form.phoneNumberId.trim(),
+        wabaId: form.wabaId.trim(),
+        accessToken: form.accessToken.trim(),
+      })
+      setForm({ phoneNumberId: '', wabaId: '', accessToken: '' })
+      toast.success('WhatsApp connected successfully')
+      onChange()
+    } catch (err) {
+      setError(err.response?.data?.message || 'Invalid credentials. Check your details and try again.')
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true)
+    try {
+      await axiosInstance.put('/api/v1/profile/wa-disconnect')
+      toast.success('WhatsApp disconnected')
+      setConfirmingDisconnect(false)
+      onChange()
+    } catch {
+      toast.error('Failed to disconnect. Please try again.')
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
+  return (
+    <SectionCard title="WhatsApp Connection" description="Your own WhatsApp Business number, used only for your messages" delay={0}>
+      <div className={clsx(
+        'flex items-center gap-3 px-3.5 py-3 rounded-lg border',
+        isConnected ? (isExpired ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200') : 'bg-red-50 border-red-200'
+      )}>
+        {isConnected ? (
+          isExpired
+            ? <AlertTriangle size={18} className="text-red-600 shrink-0" />
+            : <CheckCircle2 size={18} className="text-green-600 shrink-0" />
+        ) : (
+          <XCircle size={18} className="text-red-500 shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <p className={clsx('text-sm font-semibold', isConnected ? (isExpired ? 'text-red-700' : 'text-green-700') : 'text-red-700')}>
+            {isConnected ? (isExpired ? 'Connection Expired' : 'Connected') : 'Not Connected'}
+          </p>
+          {isConnected ? (
+            <p className="text-xs text-gray-500 mt-0.5">
+              {whatsapp.displayName || 'WhatsApp Business'} · {whatsapp.phoneNumber}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500 mt-0.5">Connect your WhatsApp Business number to start sending messages</p>
+          )}
+        </div>
+        {isConnected && (
+          confirmingDisconnect ? (
+            <div className="flex items-center gap-2 shrink-0">
+              <Button variant="danger" size="sm" loading={disconnecting} onClick={handleDisconnect}>Confirm</Button>
+              <Button variant="secondary" size="sm" onClick={() => setConfirmingDisconnect(false)}>Cancel</Button>
+            </div>
+          ) : (
+            <Button variant="secondary" size="sm" icon={<Unplug size={13} />} onClick={() => setConfirmingDisconnect(true)}>
+              Disconnect
+            </Button>
+          )
+        )}
+      </div>
+
+      {isConnected && isExpiringSoon && (
+        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+          <Clock size={13} className="shrink-0" />
+          Your access token expires on {expiresAt.toLocaleDateString()}. Generate a new one and reconnect below before it expires.
+        </div>
+      )}
+      {isConnected && isExpired && (
+        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+          <AlertTriangle size={13} className="shrink-0" />
+          Your access token has expired. Sending is blocked until you reconnect with a new token below.
+        </div>
+      )}
+
+      {(!isConnected || isExpired) && (
+        <div className="space-y-3 pt-1">
+          <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 space-y-3">
+            <p className="text-xs text-gray-500">
+              From{' '}
+              <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Meta Developer Console</a>
+              {' '}→ WhatsApp → API Setup. We verify these against Meta and fetch your number and business name automatically.
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Phone Number ID</label>
+              <input type="text" placeholder="123456789012345" value={form.phoneNumberId}
+                onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })}
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white font-mono" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">WABA ID</label>
+              <input type="text" placeholder="987654321098765" value={form.wabaId}
+                onChange={(e) => setForm({ ...form, wabaId: e.target.value })}
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white font-mono" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Permanent Access Token</label>
+              <div className="relative">
+                <input type={showToken ? 'text' : 'password'} placeholder="EAA..."
+                  value={form.accessToken}
+                  onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
+                  className="w-full px-3 py-2 pr-9 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white font-mono" />
+                <button type="button" onClick={() => setShowToken((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {showToken ? <EyeOff size={13} /> : <Eye size={13} />}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Use a System User permanent token — never a temporary one</p>
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <AlertTriangle size={13} /> {error}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              loading={connecting}
+              disabled={!form.phoneNumberId.trim() || !form.wabaId.trim() || !form.accessToken.trim()}
+              onClick={handleConnect}
+            >
+              {isExpired ? 'Reconnect' : 'Connect'}
+            </Button>
+          </div>
+        </div>
+      )}
+    </SectionCard>
+  )
+}
+
 /* ───────── TAB: WHATSAPP BUSINESS ───────── */
-function WhatsAppTab({ initialWASettings }) {
+function WhatsAppTab({ initialWASettings, whatsapp, onWhatsAppChange }) {
   const [businessHours, setBusinessHours] = useState({
     enabled:  initialWASettings?.businessHours?.enabled  ?? false,
     schedule: initialWASettings?.businessHours?.schedule?.length
@@ -267,7 +427,9 @@ function WhatsAppTab({ initialWASettings }) {
 
   return (
     <div className="space-y-4">
-      <SectionCard title="Business Hours" description="Define when your team is available" delay={0}>
+      <WhatsAppConnectionCard whatsapp={whatsapp} onChange={onWhatsAppChange} />
+
+      <SectionCard title="Business Hours" description="Define when your team is available" delay={0.04}>
         <SettingRow label="Enable Business Hours" description="Restrict auto-replies to these hours">
           <Toggle checked={businessHours.enabled} onChange={v => setBusinessHours(h => ({ ...h, enabled: v }))} />
         </SettingRow>
@@ -294,7 +456,7 @@ function WhatsAppTab({ initialWASettings }) {
         )}
       </SectionCard>
 
-      <SectionCard title="Away Message" description="Auto-reply sent outside business hours" delay={0.04}>
+      <SectionCard title="Away Message" description="Auto-reply sent outside business hours" delay={0.08}>
         <SettingRow label="Enable Away Message">
           <Toggle checked={awayMsg.enabled} onChange={v => setAwayMsg(a => ({ ...a, enabled: v }))} />
         </SettingRow>
@@ -312,7 +474,7 @@ function WhatsAppTab({ initialWASettings }) {
         )}
       </SectionCard>
 
-      <SectionCard title="First Contact Auto-Reply" description="Greet new contacts on their first message" delay={0.08}>
+      <SectionCard title="First Contact Auto-Reply" description="Greet new contacts on their first message" delay={0.12}>
         <SettingRow label="Enable Auto-Reply">
           <Toggle checked={autoReply.enabled} onChange={v => setAutoReply(a => ({ ...a, enabled: v }))} />
         </SettingRow>
@@ -542,12 +704,17 @@ function DangerTab() {
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('account')
   const [profile, setProfile]     = useState(null)
+  const { updateUser } = useAuthStore()
 
-  useEffect(() => {
+  const fetchProfile = () => {
     axiosInstance.get('/api/v1/profile').then(({ data }) => {
       setProfile(data.data.user)
+      // Keep the sidebar/dashboard's cached tenant.whatsapp in sync after connect/disconnect
+      updateUser({ tenant: data.data.user.tenant })
     }).catch(() => {})
-  }, [])
+  }
+
+  useEffect(() => { fetchProfile() }, [])
 
   const initialNotifs = profile?.notifications ?? {
     campaignReport: true, newMessage: true, deliveryFailure: true,
@@ -557,7 +724,7 @@ export default function Settings() {
   const TAB_CONTENT = {
     account:       <AccountTab />,
     notifications: <NotificationsTab initialNotifs={initialNotifs} />,
-    whatsapp:      <WhatsAppTab initialWASettings={profile?.waSettings} />,
+    whatsapp:      <WhatsAppTab initialWASettings={profile?.waSettings} whatsapp={profile?.tenant?.whatsapp} onWhatsAppChange={fetchProfile} />,
     api:           <APITab initialWebhookUrl={profile?.webhookUrl} initialWebhookEvents={profile?.webhookEvents} />,
     danger:        <DangerTab />,
   }

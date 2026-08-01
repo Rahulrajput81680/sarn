@@ -39,9 +39,13 @@ export default function Login() {
 
   const onSubmit = async (data) => {
     try {
-      const res = await axiosInstance.post('/api/v1/auth/login', data)
-      const { user, token } = res.data.data
-      setAuth(user, token)
+      const res = await axiosInstance.post('/api/v1/auth/login', {
+        email: data.email,
+        password: data.password,
+        rememberMe: !!data.remember,
+      })
+      const { user, token, refreshToken } = res.data.data
+      setAuth(user, token, refreshToken)
       toast.success('Welcome back!')
       if (user.role === ROLES.SUPER_ADMIN || user.role === ROLES.ADMIN) {
         navigate('/admin')
@@ -145,8 +149,16 @@ export default function Login() {
                 )}
               </div>
 
-              {/* Forgot */}
-              <div className="flex justify-end -mt-1">
+              {/* Remember me / Forgot */}
+              <div className="flex items-center justify-between -mt-1">
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-400"
+                    {...register('remember')}
+                  />
+                  Remember me
+                </label>
                 <Link to="/forgot-password" className="text-sm text-green-600 hover:text-green-700 font-medium">
                   Forgot Password
                 </Link>

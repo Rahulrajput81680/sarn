@@ -488,6 +488,7 @@ const fmtTime = (d) => {
 
 const normalizeConv = (c) => ({
   id: c._id,
+  contactId: c.contact?._id || c.contact || null,
   name: c.contact?.name || 'Unknown',
   phone: c.contact?.phone || '',
   avatar: (c.contact?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
@@ -517,12 +518,14 @@ const normalizeMsg = (m) => ({
 
 /* ─── New Conversation Modal ─────────────────────────────── */
 
-function NewConversationModal({ onClose, onStarted }) {
-  const [step,         setStep]         = useState(1)          // 1 = contact, 2 = template + vars
+function NewConversationModal({ onClose, onStarted, initialContact = null }) {
+  // Reused for both "+ New" (no preset contact, starts at step 1) and the inline
+  // "Use Template" re-engage action on an existing conversation (skips straight to step 2).
+  const [step,         setStep]         = useState(initialContact ? 2 : 1)
   const [contactQ,     setContactQ]     = useState('')
   const [contacts,     setContacts]     = useState([])
   const [contactsLoading, setContactsLoading] = useState(false)
-  const [selectedContact, setSelectedContact] = useState(null)
+  const [selectedContact, setSelectedContact] = useState(initialContact)
   const [templates,    setTemplates]    = useState([])
   const [tplLoading,   setTplLoading]   = useState(false)
   const [selectedTpl,  setSelectedTpl]  = useState(null)
@@ -613,7 +616,7 @@ function NewConversationModal({ onClose, onStarted }) {
             </button>
           )}
           <div className="flex-1">
-            <p className="text-sm font-semibold text-gray-900">New Conversation</p>
+            <p className="text-sm font-semibold text-gray-900">{initialContact ? 'Re-engage with a Template' : 'New Conversation'}</p>
             <p className="text-xs text-gray-400 mt-0.5">
               {step === 1 ? 'Step 1 of 2 — Select a contact' : `Step 2 of 2 — Choose a template · ${selectedContact?.name}`}
             </p>
@@ -1178,7 +1181,10 @@ export default function Inbox() {
                   <p className="text-xs text-amber-700 flex-1">
                     <strong>24h window expired.</strong> Customer must message first, or use an approved template.
                   </p>
-                  <button className="flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-300 px-2 py-1 rounded-lg hover:bg-amber-200 transition-colors shrink-0">
+                  <button
+                    onClick={() => setShowNewConv({ _id: conv.contactId, name: conv.name, phone: conv.phone, isOptedIn: true })}
+                    className="flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-300 px-2 py-1 rounded-lg hover:bg-amber-200 transition-colors shrink-0"
+                  >
                     <LayoutTemplate size={10} /> Use Template
                   </button>
                 </div>
@@ -1382,6 +1388,7 @@ export default function Inbox() {
       <AnimatePresence>
         {showNewConv && (
           <NewConversationModal
+            initialContact={typeof showNewConv === 'object' ? showNewConv : null}
             onClose={() => setShowNewConv(false)}
             onStarted={(newConv) => {
               const normalized = normalizeConv(newConv)

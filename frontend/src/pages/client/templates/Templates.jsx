@@ -127,6 +127,9 @@ function normalizeTemplate(t) {
     updatedAt: t.updatedAt ? new Date(t.updatedAt).toLocaleDateString() : '',
     usedIn: t.usageCount || 0,
     rejectionReason: t.rejectionReason || null,
+    // Distinguishes "not yet submitted for review" from "submitted, Meta just hasn't decided yet" —
+    // both show as status=pending, only metaTemplateId tells them apart.
+    submittedToMeta: !!t.metaTemplateId,
   }
 }
 
@@ -660,6 +663,13 @@ function TemplateCard({ t, index, onEdit, onDuplicate, onDelete, onSubmit }) {
             </span>
             <span className="text-xs text-gray-400">{t.language}</span>
           </div>
+          {t.status === 'pending' && (
+            <p className={`text-[11px] mt-1 ${t.submittedToMeta ? 'text-blue-500' : 'text-gray-400'}`}>
+              {t.submittedToMeta
+                ? 'Submitted to Meta — awaiting their review (auto-updates once decided)'
+                : 'Awaiting admin review — not yet sent to Meta'}
+            </p>
+          )}
         </div>
         <RowMenu t={t} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} onSubmit={onSubmit} />
       </div>

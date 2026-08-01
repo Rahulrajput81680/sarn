@@ -5,6 +5,8 @@ const messageSchema = new mongoose.Schema(
     conversation: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', index: true, default: null },
     tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
     campaign: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign', index: true, default: null },
+    contact: { type: mongoose.Schema.Types.ObjectId, ref: 'Contact', index: true, default: null },
+    template: { type: mongoose.Schema.Types.ObjectId, ref: 'Template', index: true, default: null },
     type: {
       type: String,
       enum: ['customer', 'agent', 'note', 'system'],
@@ -29,5 +31,7 @@ const messageSchema = new mongoose.Schema(
 messageSchema.index({ waMessageId: 1 }, { sparse: true })
 // Fast message pagination per conversation
 messageSchema.index({ conversation: 1, timestamp: 1 })
+// Fast 24h same-contact/same-template spam-prevention lookup
+messageSchema.index({ tenant: 1, contact: 1, template: 1, timestamp: 1 })
 
 module.exports = mongoose.model('Message', messageSchema)

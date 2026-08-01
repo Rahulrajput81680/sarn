@@ -7,6 +7,7 @@ const asyncHandler = require('../utils/asyncHandler')
 const { success }  = require('../utils/apiResponse')
 const waService    = require('../services/whatsapp/whatsapp.service')
 const { translateMetaError } = require('../utils/metaErrors')
+const { checkWAConnected } = require('../utils/waGuard')
 
 // GET /api/v1/campaigns
 const getCampaigns = asyncHandler(async (req, res) => {
@@ -68,7 +69,7 @@ const sendCampaign = asyncHandler(async (req, res) => {
   }
 
   // Check tenant TOS acceptance — required before any bulk sending
-  const tenant = await Tenant.findById(req.tenantId).select('limits usage tosAccepted').lean()
+  const tenant = await Tenant.findById(req.tenantId).select('+whatsapp.accessToken limits usage tosAccepted whatsapp.status whatsapp.phoneNumberId whatsapp.tokenExpiresAt').lean()
   if (!tenant.tosAccepted) {
     return res.status(403).json({
       success: false,
@@ -76,6 +77,10 @@ const sendCampaign = asyncHandler(async (req, res) => {
       code: 'TOS_REQUIRED',
     })
   }
+
+  // Block bulk sending unless this tenant has their own connected, non-expired WhatsApp number
+  const waBlocked = checkWAConnected(tenant)
+  if (waBlocked) return res.status(403).json(waBlocked)
 
   // Prevent multiple simultaneous campaigns — protects quality score and API rate limits
   const alreadyRunning = await Campaign.countDocuments({ tenant: req.tenantId, status: 'running' })
@@ -106,7 +111,7 @@ const sendCampaign = asyncHandler(async (req, res) => {
 
   // Process in background — replace with BullMQ for high-volume production use
   setImmediate(async () => {
-    let sent = 0, failed = 0, firstError = null
+    let sent = 0, failed = 0, skipped = 0, firstError = null
 
     // Build a variable lookup from the campaign's stored mapping (Mongoose Map → plain Map)
     const varMap = campaign.variables instanceof Map
@@ -114,6 +119,19 @@ const sendCampaign = asyncHandler(async (req, res) => {
       : new Map(Object.entries(campaign.variables?.toObject?.() || campaign.variables || {}))
 
     for (const contact of contacts) {
+      // Spam guard: same contact cannot receive the same template more than once per 24h
+      const recentSend = await Message.findOne({
+        tenant: campaign.tenant,
+        contact: contact._id,
+        template: campaign.template._id,
+        timestamp: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      }).select('_id').lean()
+
+      if (recentSend) {
+        skipped++
+        continue
+      }
+
       try {
         // Build Meta API components array to satisfy template parameter requirements.
         // Each {{N}} placeholder in the body must have a matching parameter value.
@@ -142,10 +160,13 @@ const sendCampaign = asyncHandler(async (req, res) => {
         sent++
 
         // Create a Message record so webhook delivery/read events can update campaign stats
+        // (also the source of truth for the 24h same-contact/same-template dedup check above)
         if (result?.messageId) {
           await Message.create({
             tenant: campaign.tenant,
             campaign: campaign._id,
+            contact: contact._id,
+            template: campaign.template._id,
             type: 'agent',
             text: `[Campaign: ${campaign.template.name}]`,
             status: 'sent',
@@ -171,6 +192,7 @@ const sendCampaign = asyncHandler(async (req, res) => {
       completedAt: new Date(),
       'stats.sent': sent,
       'stats.failed': failed,
+      'stats.skipped': skipped,
       ...(firstError ? { 'stats.lastError': firstError } : {}),
     })
 

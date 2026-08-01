@@ -188,8 +188,6 @@ function ConnectWhatsApp({ bizData, onFinish }) {
 
   // Manual form state
   const [form,      setForm]      = useState({
-    phoneNumber:   '',
-    displayName:   bizData?.businessName || '',
     phoneNumberId: '',
     wabaId:        '',
     accessToken:   '',
@@ -256,20 +254,19 @@ function ConnectWhatsApp({ bizData, onFinish }) {
   // ── Manual form ───────────────────────────────────────────────────────────
 
   const handleManualConnect = async () => {
-    if (!form.phoneNumber.trim() || !form.displayName.trim()) return
+    if (!form.phoneNumberId.trim() || !form.wabaId.trim() || !form.accessToken.trim()) return
     setLoading(true)
     setError('')
     try {
-      await axiosInstance.put('/api/v1/profile/wa-connect', {
-        phoneNumber:   form.phoneNumber.trim(),
-        displayName:   form.displayName.trim(),
-        phoneNumberId: form.phoneNumberId.trim() || undefined,
-        wabaId:        form.wabaId.trim()        || undefined,
-        accessToken:   form.accessToken.trim()   || undefined,
+      const { data } = await axiosInstance.put('/api/v1/profile/wa-connect', {
+        phoneNumberId: form.phoneNumberId.trim(),
+        wabaId:        form.wabaId.trim(),
+        accessToken:   form.accessToken.trim(),
       })
-      onFinish(form.displayName.trim())
-    } catch {
-      setError('Failed to save. Check your details and try again.')
+      // Backend verifies against Meta and returns the real phone/business name — never trust local form state
+      onFinish(data.data?.tenant?.whatsapp?.displayName || 'your WhatsApp number')
+    } catch (err) {
+      setError(err.response?.data?.message || 'Invalid credentials. Check your details and try again.')
     } finally {
       setLoading(false)
     }
@@ -334,28 +331,15 @@ function ConnectWhatsApp({ bizData, onFinish }) {
   // ── Sub-view: manual credential entry ────────────────────────────────────
 
   if (view === 'manual') {
-    const manualValid = form.phoneNumber.trim() && form.displayName.trim()
+    const manualValid = form.phoneNumberId.trim() && form.wabaId.trim() && form.accessToken.trim()
     return (
       <div>
         <div className="mb-5">
           <h2 className="text-xl font-semibold text-gray-900">Enter Credentials</h2>
-          <p className="text-sm text-gray-500 mt-1">Paste your Meta API credentials from the Developer Console</p>
+          <p className="text-sm text-gray-500 mt-1">Paste your Meta API credentials — we'll verify them and fetch your number and business name automatically</p>
         </div>
 
         <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Display Name <span className="text-red-500">*</span></label>
-            <input type="text" placeholder="Acme Support" value={form.displayName}
-              onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">WhatsApp Number <span className="text-red-500">*</span></label>
-            <input type="tel" placeholder="+91 98765 43210" value={form.phoneNumber}
-              onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-          </div>
-
           <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 space-y-3">
             <p className="text-xs text-gray-500">
               From{' '}

@@ -116,25 +116,43 @@ const getTeamMembers = asyncHandler(async (req, res) => {
 })
 
 // PUT /api/v1/profile/wa-connect  — manual credential entry (developer / advanced users)
+// Credentials are verified against Meta's API before anything is saved — we never trust
+// client-supplied phone number / business name, and we never persist a token we can't confirm works.
 const connectWhatsApp = asyncHandler(async (req, res) => {
-  const { phoneNumber, displayName, phoneNumberId, wabaId, accessToken } = req.body
-  if (!phoneNumber || !displayName) {
-    return res.status(400).json({ success: false, message: 'Phone number and display name are required' })
+  const { phoneNumberId, wabaId, accessToken } = req.body
+  if (!phoneNumberId || !wabaId || !accessToken) {
+    return res.status(400).json({ success: false, message: 'Access token, phone number ID, and WABA ID are required' })
+  }
+
+  let verified
+  try {
+    verified = await waService.verifyCredentials({
+      accessToken: accessToken.trim(),
+      phoneNumberId: phoneNumberId.trim(),
+      wabaId: wabaId.trim(),
+    })
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid credentials. Check your Access Token, Phone Number ID, and WABA ID and try again.',
+    })
   }
 
   const update = {
-    'whatsapp.phoneNumber':  phoneNumber.trim(),
-    'whatsapp.displayName':  displayName.trim(),
-    'whatsapp.status':       'connected',
-    'whatsapp.connectedAt':  new Date(),
+    'whatsapp.phoneNumber':   verified.displayPhone,
+    'whatsapp.displayName':   verified.verifiedName || verified.wabaName,
+    'whatsapp.phoneNumberId': phoneNumberId.trim(),
+    'whatsapp.wabaId':        wabaId.trim(),
+    'whatsapp.accessToken':   encrypt(accessToken.trim()), // never saved in plaintext
+    'whatsapp.status':        'connected',
+    'whatsapp.connectedAt':   new Date(),
   }
-  if (phoneNumberId) update['whatsapp.phoneNumberId'] = phoneNumberId.trim()
-  if (wabaId)        update['whatsapp.wabaId']        = wabaId.trim()
-  // Encrypt token before storing — never saved in plaintext
-  if (accessToken)   update['whatsapp.accessToken']   = encrypt(accessToken.trim())
 
   const tenant = await Tenant.findByIdAndUpdate(req.user.tenant, update, { new: true })
     .select('name whatsapp.phoneNumber whatsapp.displayName whatsapp.status whatsapp.connectedAt')
+
+  // Immediately learn the token's expiry so Settings can show it right away, not just after the next sweep
+  waService.checkTokenExpiry(req.user.tenant).catch(() => {})
 
   return success(res, { tenant }, 'WhatsApp connected successfully')
 })
@@ -229,6 +247,27 @@ const selectWhatsAppNumber = asyncHandler(async (req, res) => {
   return success(res, { tenant: updated }, 'WhatsApp number connected successfully')
 })
 
+// PUT /api/v1/profile/wa-disconnect — clears stored credentials so sends fall back to blocked, not shared/platform config
+const disconnectWhatsApp = asyncHandler(async (req, res) => {
+  const tenant = await Tenant.findByIdAndUpdate(
+    req.user.tenant,
+    {
+      'whatsapp.status':              'disconnected',
+      'whatsapp.accessToken':         null,
+      'whatsapp.phoneNumberId':       null,
+      'whatsapp.wabaId':              null,
+      'whatsapp.phoneNumber':         null,
+      'whatsapp.displayName':         null,
+      'whatsapp.connectedAt':         null,
+      'whatsapp.tokenExpiresAt':      null,
+      'whatsapp.tokenLastCheckedAt':  null,
+    },
+    { new: true }
+  ).select('name whatsapp.status')
+
+  return success(res, { tenant }, 'WhatsApp disconnected')
+})
+
 // POST /api/v1/profile/complete-onboarding
 const completeOnboarding = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(req.user._id, { isOnboarded: true })
@@ -252,5 +291,5 @@ module.exports = {
   getProfile, updateProfile, uploadAvatar,
   changePassword, updateNotifications, updateWASettings,
   regenerateApiKey, updateWebhook, getTeamMembers,
-  connectWhatsApp, connectWhatsAppOAuth, selectWhatsAppNumber, completeOnboarding, acceptTOS,
+  connectWhatsApp, connectWhatsAppOAuth, selectWhatsAppNumber, disconnectWhatsApp, completeOnboarding, acceptTOS,
 }

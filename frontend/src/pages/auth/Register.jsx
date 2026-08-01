@@ -45,7 +45,7 @@ export default function Register() {
         password: data.password,
         businessName: data.company,
       })
-      setAuth(res.data.data.user, res.data.data.token)
+      setAuth(res.data.data.user, res.data.data.token, res.data.data.refreshToken)
       toast.success('Account created! Welcome to SarnConnect.')
       navigate('/dashboard')
     } catch (err) {

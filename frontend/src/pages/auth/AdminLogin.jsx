@@ -25,7 +25,7 @@ export default function AdminLogin() {
 
     try {
       const res = await axiosInstance.post('/api/v1/auth/login', { email, password })
-      const { user, token } = res.data.data
+      const { user, token, refreshToken } = res.data.data
 
       if (user.role !== ROLES.SUPER_ADMIN && user.role !== ROLES.ADMIN) {
         setError('Access denied. This panel is for platform administrators only.')
@@ -33,7 +33,7 @@ export default function AdminLogin() {
         return
       }
 
-      setAuth(user, token)
+      setAuth(user, token, refreshToken)
       navigate('/admin', { replace: true })
     } catch (err) {
       setError(err.response?.data?.message || 'Invalid credentials. Access denied.')

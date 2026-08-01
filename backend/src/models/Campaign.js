@@ -34,6 +34,7 @@ const campaignSchema = new mongoose.Schema(
       delivered: { type: Number, default: 0 },
       read:      { type: Number, default: 0 },
       failed:    { type: Number, default: 0 },
+      skipped:   { type: Number, default: 0 }, // duplicate send within 24h window
       optedOut:  { type: Number, default: 0 },
       lastError: { type: String, default: null },
     },

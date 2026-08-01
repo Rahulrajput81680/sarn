@@ -9,6 +9,7 @@ const { success } = require('../utils/apiResponse')
 const waService = require('../services/whatsapp/whatsapp.service')
 const { translateMetaError } = require('../utils/metaErrors')
 const { mimeToMediaType } = require('../utils/multerConfig')
+const { checkWAConnected } = require('../utils/waGuard')
 
 // GET /api/v1/conversations
 const getConversations = asyncHandler(async (req, res) => {
@@ -81,7 +82,7 @@ const sendMessage = asyncHandler(async (req, res) => {
     }
 
     // Check tenant message usage limit
-    const tenant = await Tenant.findById(req.tenantId).select('limits usage').lean()
+    const tenant = await Tenant.findById(req.tenantId).select('+whatsapp.accessToken limits usage whatsapp.status whatsapp.phoneNumberId whatsapp.tokenExpiresAt').lean()
     if (tenant.usage.messages >= tenant.limits.messages) {
       return res.status(429).json({
         success: false,
@@ -89,6 +90,9 @@ const sendMessage = asyncHandler(async (req, res) => {
         code: 'LIMIT_REACHED',
       })
     }
+
+    const waBlocked = checkWAConnected(tenant)
+    if (waBlocked) return res.status(403).json(waBlocked)
 
     try {
       const result = await waService.sendTextMessage(req.tenantId, { to: conv.contact.phone, text })
@@ -210,10 +214,13 @@ const startConversation = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'This contact has opted out and cannot be messaged.' })
   }
 
-  const tenant = await Tenant.findById(req.tenantId).select('limits usage').lean()
+  const tenant = await Tenant.findById(req.tenantId).select('+whatsapp.accessToken limits usage whatsapp.status whatsapp.phoneNumberId whatsapp.tokenExpiresAt').lean()
   if (tenant.usage.messages >= tenant.limits.messages) {
     return res.status(429).json({ success: false, message: 'Message limit reached. Upgrade your plan.', code: 'LIMIT_REACHED' })
   }
+
+  const waBlockedStart = checkWAConnected(tenant)
+  if (waBlockedStart) return res.status(403).json(waBlockedStart)
 
   // Build WhatsApp runtime components from variable values
   const components = variables.length
@@ -291,10 +298,13 @@ const sendMediaMessage = asyncHandler(async (req, res) => {
     })
   }
 
-  const tenant = await Tenant.findById(req.tenantId).select('limits usage').lean()
+  const tenant = await Tenant.findById(req.tenantId).select('+whatsapp.accessToken limits usage whatsapp.status whatsapp.phoneNumberId whatsapp.tokenExpiresAt').lean()
   if (tenant.usage.messages >= tenant.limits.messages) {
     return res.status(429).json({ success: false, message: 'Message limit reached. Upgrade your plan.', code: 'LIMIT_REACHED' })
   }
+
+  const waBlockedMedia = checkWAConnected(tenant)
+  if (waBlockedMedia) return res.status(403).json(waBlockedMedia)
 
   const mediaType = mimeToMediaType(req.file.mimetype)
   const caption   = req.body.caption || ''

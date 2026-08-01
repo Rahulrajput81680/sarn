@@ -12,6 +12,9 @@ const tenantSchema = new mongoose.Schema(
       wabaId:        { type: String, trim: true },
       accessToken:   { type: String, select: false }, // AES-256 encrypted — never returned by default
       connectedAt:   { type: Date, default: null },
+      // null = unknown/never checked, 0 (as Date(0)) is not used — a non-expiring token stores null here
+      tokenExpiresAt:      { type: Date, default: null },
+      tokenLastCheckedAt:  { type: Date, default: null },
       // Temporary token stored during Embedded Signup OAuth flow (15-min TTL)
       oauthToken:          { type: String, select: false },
       oauthTokenExpiresAt: { type: Date, default: null },

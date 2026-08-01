@@ -7,6 +7,8 @@ const provider = process.env.WA_PROVIDER === 'meta'
   : require('./mock.provider')
 
 const { getTenantWAConfig } = require('./tenantConfig')
+const Tenant = require('../../models/Tenant')
+const { decrypt } = require('../../utils/encryption')
 
 // ── Messaging ─────────────────────────────────────────────────────────────────
 
@@ -55,6 +57,30 @@ async function getWABAInfo(accessToken) {
   return provider.getWABAInfo(accessToken)
 }
 
+// Verifies raw, not-yet-saved credentials against Meta before they're persisted.
+// No tenantId — this runs pre-connection, so it talks to the provider directly.
+async function verifyCredentials({ accessToken, phoneNumberId, wabaId }) {
+  return provider.verifyCredentials({ accessToken, phoneNumberId, wabaId })
+}
+
+// Checks a tenant's stored token against Meta and refreshes Tenant.whatsapp.tokenExpiresAt.
+// Returns null if the tenant has no connected WhatsApp credentials to check.
+async function checkTokenExpiry(tenantId) {
+  const tenant = await Tenant.findById(tenantId).select('+whatsapp.accessToken whatsapp.status').lean()
+  if (!tenant?.whatsapp?.accessToken || tenant.whatsapp.status !== 'connected') return null
+
+  const token = decrypt(tenant.whatsapp.accessToken)
+  const { isValid, expiresAt } = await provider.debugAccessToken(token)
+
+  await Tenant.findByIdAndUpdate(tenantId, {
+    'whatsapp.tokenExpiresAt':     expiresAt,
+    'whatsapp.tokenLastCheckedAt': new Date(),
+    ...(isValid ? {} : { 'whatsapp.status': 'disconnected' }),
+  })
+
+  return { isValid, expiresAt }
+}
+
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
@@ -64,4 +90,6 @@ module.exports = {
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,
+  verifyCredentials,
+  checkTokenExpiry,
 }
