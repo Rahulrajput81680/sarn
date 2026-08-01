@@ -46,6 +46,10 @@ function normalizeTemplate(t, index) {
     footer:         footerComp?.text || '',
     buttons:        (buttonsComp?.buttons || []).map((b) => ({ type: b.type, text: b.text, url: b.url, phone: b.phoneNumber })),
     status:         t.status.toLowerCase(),
+    metaTemplateId: t.metaTemplateId || null,
+    // Distinguishes "never touched by admin" from "admin approved it, Meta just hasn't decided yet" —
+    // both are status=PENDING, only metaTemplateId tells them apart.
+    submittedToMeta:!!t.metaTemplateId,
     rejectionReason:t.rejectionReason || '',
     rejectionNote:  t.rejectionNote   || '',
     submittedBy:    tenantName,
@@ -317,6 +321,14 @@ function ReviewDrawer({ template, onClose, onApprove, onReject, actionLoading })
               {template.decidedOn && <p className="text-[10px] text-green-500">{template.decidedOn} · by {template.decidedBy}</p>}
             </div>
           )}
+          {template.status === 'pending' && template.submittedToMeta && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <p className="text-xs font-semibold text-blue-700 mb-1">Submitted to Meta — awaiting their review</p>
+              <p className="text-xs text-blue-600">
+                Meta ID: <code className="font-mono">{template.metaTemplateId}</code>. Review usually takes minutes to a few hours (longer for a brand-new WABA). This will flip to Approved automatically once Meta confirms — no action needed here.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Action footer — pending only */}
@@ -378,9 +390,16 @@ function TemplateRow({ template, onSelect, onQuickApprove, onQuickReject, index 
               </div>
               <p className="text-xs text-gray-500 mt-0.5">{template.client} · {template.submittedOn}</p>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {statusIcon[template.status]}
-              <Badge color={statusColor[template.status]}>{template.status}</Badge>
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <div className="flex items-center gap-1.5">
+                {statusIcon[template.status]}
+                <Badge color={statusColor[template.status]}>{template.status}</Badge>
+              </div>
+              {template.status === 'pending' && (
+                <span className={`text-[10px] font-medium ${template.submittedToMeta ? 'text-blue-500' : 'text-gray-400'}`}>
+                  {template.submittedToMeta ? 'Submitted — awaiting Meta' : 'Awaiting admin review'}
+                </span>
+              )}
             </div>
           </div>
           <p className="text-xs text-gray-600 mt-2 line-clamp-2 leading-relaxed">{template.body || <span className="italic text-gray-300">No body</span>}</p>
@@ -479,12 +498,21 @@ export default function TemplateApproval() {
   const handleApprove = async (id) => {
     setActionLoading(true)
     try {
-      await api.patch(`/api/v1/admin/templates/${id}/review`, { action: 'approve' })
-      toast.success('Template approved')
-      setTemplates((prev) => prev.map((t) => t.id === id ? { ...t, status: 'approved', decidedOn: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) } : t))
-      if (selected?.id === id) setSelected((s) => ({ ...s, status: 'approved' }))
-    } catch {
-      toast.error('Failed to approve template')
+      const res = await api.patch(`/api/v1/admin/templates/${id}/review`, { action: 'approve' })
+      const updated = res.data.data.template
+      // Reflect what actually happened server-side — real-mode approval only submits for Meta's
+      // review and stays PENDING; it does NOT become 'approved' just because the API call succeeded.
+      const patch = {
+        status:          updated.status.toLowerCase(),
+        metaTemplateId:  updated.metaTemplateId || null,
+        submittedToMeta: !!updated.metaTemplateId,
+        decidedOn:       new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      }
+      toast.success(res.data.message || 'Template updated')
+      setTemplates((prev) => prev.map((t) => t.id === id ? { ...t, ...patch } : t))
+      if (selected?.id === id) setSelected((s) => ({ ...s, ...patch }))
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to approve template')
     } finally {
       setActionLoading(false)
     }

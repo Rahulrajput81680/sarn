@@ -20,6 +20,24 @@ async function getMessageStatus(waMessageId, config) {
   return { status: 'delivered', timestamp: new Date() }
 }
 
+async function verifyCredentials({ accessToken, phoneNumberId, wabaId }) {
+  await delay(200)
+  if (!accessToken || !phoneNumberId || !wabaId) {
+    throw new Error('Missing credentials')
+  }
+  return {
+    verifiedName:  'Mock Business',
+    displayPhone:  '+91 00000 00000',
+    qualityRating: 'GREEN',
+    wabaName:      'Mock WABA',
+  }
+}
+
+async function debugAccessToken(inputToken) {
+  await delay(100)
+  return { isValid: true, expiresAt: null, scopes: ['whatsapp_business_messaging'] }
+}
+
 async function submitTemplate({ name, category, language, components, config }) {
   await delay(300)
   return { metaTemplateId: `mock_tpl_${uuidv4()}`, status: 'PENDING' }
@@ -83,4 +101,6 @@ module.exports = {
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,
+  verifyCredentials,
+  debugAccessToken,
 }

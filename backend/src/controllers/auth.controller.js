@@ -1,10 +1,22 @@
 const crypto = require('crypto')
 const User = require('../models/User')
 const Tenant = require('../models/Tenant')
-const { signToken } = require('../utils/generateToken')
+const RefreshToken = require('../models/RefreshToken')
+const { signToken, generateRefreshToken, hashRefreshToken } = require('../utils/generateToken')
 const asyncHandler = require('../utils/asyncHandler')
 const { success } = require('../utils/apiResponse')
 const { sendEmail, welcomeEmail, passwordResetEmail } = require('../utils/emailService')
+
+const MAX_LOGIN_ATTEMPTS = 5
+const LOCK_DURATION_MS = 15 * 60 * 1000
+
+// Issues an access token + a freshly stored refresh token for a user
+async function issueTokens(user, tenantId, rememberMe) {
+  const token = signToken({ id: user._id, role: user.role, tenantId })
+  const { raw, hash, expiresAt } = generateRefreshToken(rememberMe)
+  await RefreshToken.create({ user: user._id, tokenHash: hash, rememberMe: !!rememberMe, expiresAt })
+  return { token, refreshToken: raw }
+}
 
 // POST /api/v1/auth/register
 const register = asyncHandler(async (req, res) => {
@@ -39,13 +51,14 @@ const register = asyncHandler(async (req, res) => {
   user.businessName = businessName || ''
   await user.save({ validateBeforeSave: false })
 
-  const token = signToken({ id: user._id, role: user.role, tenantId: tenant._id })
+  const { token, refreshToken } = await issueTokens(user, tenant._id, false)
 
   // Send welcome email (non-blocking)
   sendEmail({ to: user.email, subject: 'Welcome to SARN Connect!', html: welcomeEmail(user.name) }).catch(() => {})
 
   return success(res, {
     token,
+    refreshToken,
     user: {
       id: user._id,
       name: user.name,
@@ -59,15 +72,36 @@ const register = asyncHandler(async (req, res) => {
 
 // POST /api/v1/auth/login
 const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body
+  const { email, password, rememberMe } = req.body
 
   if (!email || !password) {
     return res.status(400).json({ success: false, message: 'Email and password are required' })
   }
 
-  const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password').populate('tenant', 'name plan limits usage whatsapp isActive')
+  const user = await User.findOne({ email: email.toLowerCase().trim() })
+    .select('+password +loginAttempts +lockUntil')
+    .populate('tenant', 'name plan limits usage whatsapp isActive')
 
-  if (!user || !(await user.matchPassword(password))) {
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Invalid email or password' })
+  }
+
+  if (user.lockUntil && user.lockUntil > new Date()) {
+    const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000)
+    return res.status(423).json({
+      success: false,
+      message: `Too many failed attempts. Account locked for ${minutesLeft} more minute(s).`,
+      code: 'ACCOUNT_LOCKED',
+    })
+  }
+
+  if (!(await user.matchPassword(password))) {
+    user.loginAttempts = (user.loginAttempts || 0) + 1
+    if (user.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+      user.lockUntil = new Date(Date.now() + LOCK_DURATION_MS)
+      user.loginAttempts = 0
+    }
+    await user.save({ validateBeforeSave: false })
     return res.status(401).json({ success: false, message: 'Invalid email or password' })
   }
 
@@ -79,13 +113,16 @@ const login = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Your account has been suspended. Please contact support.' })
   }
 
+  user.loginAttempts = 0
+  user.lockUntil = null
   user.lastLogin = new Date()
   await user.save({ validateBeforeSave: false })
 
-  const token = signToken({ id: user._id, role: user.role, tenantId: user.tenant?._id })
+  const { token, refreshToken } = await issueTokens(user, user.tenant?._id, rememberMe)
 
   return success(res, {
     token,
+    refreshToken,
     user: {
       id: user._id,
       name: user.name,
@@ -169,4 +206,42 @@ const resetPassword = asyncHandler(async (req, res) => {
   return success(res, {}, 'Password reset successfully. Please log in with your new password.')
 })
 
-module.exports = { register, login, getMe, forgotPassword, resetPassword }
+// POST /api/v1/auth/refresh
+const refresh = asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body
+  if (!refreshToken) return res.status(400).json({ success: false, message: 'Refresh token is required' })
+
+  const tokenHash = hashRefreshToken(refreshToken)
+  const stored = await RefreshToken.findOne({ tokenHash, revoked: false, expiresAt: { $gt: new Date() } })
+
+  if (!stored) {
+    return res.status(401).json({ success: false, message: 'Session expired. Please log in again.' })
+  }
+
+  const user = await User.findById(stored.user).populate('tenant', 'name plan limits usage whatsapp isActive')
+  if (!user || !user.isActive || user.tenant?.isActive === false) {
+    stored.revoked = true
+    await stored.save()
+    return res.status(401).json({ success: false, message: 'Session expired. Please log in again.' })
+  }
+
+  // Rotate — revoke the used refresh token and issue a new one, preventing replay
+  stored.revoked = true
+  await stored.save()
+
+  const { token, refreshToken: newRefreshToken } = await issueTokens(user, user.tenant?._id, stored.rememberMe)
+
+  return success(res, { token, refreshToken: newRefreshToken }, 'Token refreshed')
+})
+
+// POST /api/v1/auth/logout
+const logout = asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body
+  if (refreshToken) {
+    const tokenHash = hashRefreshToken(refreshToken)
+    await RefreshToken.updateOne({ tokenHash }, { revoked: true })
+  }
+  return success(res, {}, 'Logged out')
+})
+
+module.exports = { register, login, getMe, forgotPassword, resetPassword, refresh, logout }

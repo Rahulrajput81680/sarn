@@ -51,9 +51,60 @@ async function getMessageStatus(waMessageId, config) {
   return { status: 'sent', timestamp: new Date() }
 }
 
+// Verifies a token + phoneNumberId + wabaId actually belong together and are usable.
+// Called before saving manually-pasted credentials — never trust client-supplied phone/business name.
+async function verifyCredentials({ accessToken, phoneNumberId, wabaId }) {
+  const client = getClient({ accessToken })
+
+  const [phoneRes, wabaRes] = await Promise.all([
+    client.get(`/${phoneNumberId}`, { params: { fields: 'verified_name,display_phone_number,quality_rating' } }),
+    client.get(`/${wabaId}`, { params: { fields: 'id,name' } }),
+  ])
+
+  return {
+    verifiedName:  phoneRes.data.verified_name,
+    displayPhone:  phoneRes.data.display_phone_number,
+    qualityRating: phoneRes.data.quality_rating || null,
+    wabaName:      wabaRes.data.name,
+  }
+}
+
+// Inspects a token's validity/expiry via Meta's debug_token endpoint.
+// Requires the platform app's own id+secret (not the tenant's token) to act as inspector.
+async function debugAccessToken(inputToken) {
+  const appId     = process.env.META_APP_ID
+  const appSecret = process.env.META_APP_SECRET
+  if (!appId || !appSecret) throw new Error('META_APP_ID/META_APP_SECRET not configured on the server')
+
+  const { data } = await axios.get(`${BASE}/debug_token`, {
+    params: { input_token: inputToken, access_token: `${appId}|${appSecret}` },
+    timeout: 15000,
+  })
+
+  const info = data.data || {}
+  return {
+    isValid:   !!info.is_valid,
+    // Meta returns expires_at: 0 for tokens that never expire (e.g. permanent System User tokens)
+    expiresAt: info.expires_at ? new Date(info.expires_at * 1000) : null,
+    scopes:    info.scopes || [],
+  }
+}
+
+// Meta's template-creation API rejects any key it doesn't recognize — `variables` is purely our
+// own internal bookkeeping (used to know which {{n}} placeholders exist) and must never be sent.
+function toMetaComponent(c) {
+  const comp = { type: c.type }
+  if (c.type === 'HEADER' && c.format) comp.format = c.format
+  if (c.text) comp.text = c.text
+  if (c.example) comp.example = c.example
+  if (c.type === 'BUTTONS' && c.buttons?.length) comp.buttons = c.buttons
+  return comp
+}
+
 async function submitTemplate({ name, category, language, components, config }) {
   const { data } = await getClient(config).post(`/${config.wabaId}/message_templates`, {
-    name, category, language, components,
+    name, category, language,
+    components: (components || []).map(toMetaComponent),
   })
   return { metaTemplateId: data.id, status: data.status }
 }
@@ -120,4 +171,6 @@ module.exports = {
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,
+  verifyCredentials,
+  debugAccessToken,
 }

@@ -50,6 +50,10 @@ const userSchema = new mongoose.Schema(
     isOnboarded: { type: Boolean, default: false },
     lastLogin: { type: Date },
 
+    // ── Brute-force protection ─────────────────────────────
+    loginAttempts: { type: Number, default: 0, select: false },
+    lockUntil: { type: Date, default: null, select: false },
+
     // ── Business profile ──────────────────────────────────
     businessName: { type: String, trim: true, maxlength: 100 },
     category: { type: String, trim: true, maxlength: 60 },
