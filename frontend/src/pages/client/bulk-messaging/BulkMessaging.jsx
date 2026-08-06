@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send, FileText, Users, Clock, CheckCircle2, ChevronRight,
   ChevronLeft, Upload, X, Plus, AlertTriangle, Check,
-  Zap, Calendar, Layers, Gauge, RotateCcw, Eye,
+  Zap, Calendar, Layers, Gauge, RotateCcw, Eye, Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PageHeader from '../../../components/layout/PageHeader'
@@ -528,7 +528,7 @@ function StepSchedule({ data, onChange, onNext, onBack }) {
 
 /* ─── Step 4: Review & Send ─────────────────────────────── */
 
-function StepReview({ template, recipients, schedule, onBack, onSend }) {
+function StepReview({ template, recipients, schedule, onBack, onSend, sending }) {
   const rows = [
     { label: 'Template',    value: template?.name || '—' },
     { label: 'Recipients',  value: `${recipients?.count?.toLocaleString() || 0} contacts` },
@@ -565,15 +565,22 @@ function StepReview({ template, recipients, schedule, onBack, onSend }) {
       )}
 
       <div className="flex justify-between">
-        <StepBtn onClick={onBack} variant="secondary"><ChevronLeft size={15} /> Back</StepBtn>
+        <StepBtn onClick={onBack} variant="secondary" disabled={sending}><ChevronLeft size={15} /> Back</StepBtn>
         <motion.button
           whileTap={{ scale: 0.97 }}
           onClick={onSend}
-          className="flex items-center gap-2 px-6 py-2.5 bg-green-100 text-gray-800 border-2 border-green-400 shadow-sm shadow-green-500 hover:bg-white/45 text-sm font-semibold rounded-lg"
+          disabled={sending}
+          className="flex items-center gap-2 px-6 py-2.5 bg-green-100 text-gray-800 border-2 border-green-400 shadow-sm shadow-green-500 hover:bg-white/45 text-sm font-semibold rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
           style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
         >
-          <Send size={15} />
-          {schedule?.sendType === 'scheduled' ? 'Schedule Campaign' : 'Send Now'}
+          {sending
+            ? <Loader2 size={15} className="animate-spin" />
+            : <Send size={15} />
+          }
+          {sending
+            ? 'Sending…'
+            : (schedule?.sendType === 'scheduled' ? 'Schedule Campaign' : 'Send Now')
+          }
         </motion.button>
       </div>
     </div>
@@ -615,6 +622,7 @@ export default function BulkMessaging() {
   const [schedule,   setSchedule]   = useState({})
   const [sent,       setSent]       = useState(false)
   const [sentCount,  setSentCount]  = useState(0)
+  const [sending,    setSending]    = useState(false)
 
   const [templates,      setTemplates]      = useState([])
   const [campaigns,      setCampaigns]      = useState([])
@@ -680,6 +688,9 @@ export default function BulkMessaging() {
   const reset = () => { setStep(0); setTemplate(null); setVarMapping({}); setRecipients({}); setSchedule({}) }
 
   const handleSend = async () => {
+    if (sending) return
+    setSending(true)
+
     const campaignName = template?.name
       ? `${template.name}_${new Date().toISOString().split('T')[0]}`
       : `campaign_${Date.now()}`
@@ -717,6 +728,8 @@ export default function BulkMessaging() {
       }
       toast.error(err.response?.data?.message || 'Failed to send campaign.')
       return
+    } finally {
+      setSending(false)
     }
 
     setSent(true)
@@ -728,7 +741,7 @@ export default function BulkMessaging() {
     <StepTemplate selected={template} onSelect={(t) => { setTemplate(t); setVarMapping({}) }} onNext={goNext} varMapping={varMapping} onVarMapping={setVarMapping} templates={templates} />,
     <StepRecipients data={recipients} onChange={setRecipients} onNext={goNext} onBack={goBack} segments={segments} />,
     <StepSchedule data={schedule} onChange={setSchedule} onNext={goNext} onBack={goBack} />,
-    <StepReview template={template} recipients={recipients} schedule={schedule} onBack={goBack} onSend={handleSend} />,
+    <StepReview template={template} recipients={recipients} schedule={schedule} onBack={goBack} onSend={handleSend} sending={sending} />,
   ]
 
   if (!waConnected) {
