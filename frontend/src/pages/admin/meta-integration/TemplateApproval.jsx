@@ -331,13 +331,14 @@ function ReviewDrawer({ template, onClose, onApprove, onReject, actionLoading })
           )}
         </div>
 
-        {/* Action footer — pending only */}
-        {template.status === 'pending' && (
+        {/* Action footer — only for templates that never actually reached Meta.
+            Once submittedToMeta is true, Meta owns the decision — nothing left to click here. */}
+        {template.status === 'pending' && !template.submittedToMeta && (
           <div className="sticky bottom-0 bg-white border-t border-gray-100 p-4">
             {!allPass && (
               <div className="w-full flex gap-2 items-start text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-2">
                 <AlertTriangle size={13} className="text-amber-500 shrink-0 mt-0.5" />
-                Validation failed — you can still approve manually if you've reviewed the content.
+                Validation failed — you can still submit manually if you've reviewed the content.
               </div>
             )}
             <div className="flex gap-2 w-full">
@@ -353,7 +354,7 @@ function ReviewDrawer({ template, onClose, onApprove, onReject, actionLoading })
                 disabled={actionLoading}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-100 text-gray-800 border-2 border-green-400 shadow-sm shadow-green-500 hover:bg-white/45 text-sm font-semibold transition-all disabled:opacity-50"
               >
-                <CheckCircle2 size={14} /> {actionLoading ? 'Approving…' : 'Approve'}
+                <CheckCircle2 size={14} /> {actionLoading ? 'Submitting…' : 'Submit to Meta'}
               </button>
             </div>
           </div>
@@ -396,8 +397,8 @@ function TemplateRow({ template, onSelect, onQuickApprove, onQuickReject, index 
                 <Badge color={statusColor[template.status]}>{template.status}</Badge>
               </div>
               {template.status === 'pending' && (
-                <span className={`text-[10px] font-medium ${template.submittedToMeta ? 'text-blue-500' : 'text-gray-400'}`}>
-                  {template.submittedToMeta ? 'Submitted — awaiting Meta' : 'Awaiting admin review'}
+                <span className={`text-[10px] font-medium ${template.submittedToMeta ? 'text-blue-500' : 'text-amber-500'}`}>
+                  {template.submittedToMeta ? 'Submitted — awaiting Meta' : 'Never reached Meta — needs resubmitting'}
                 </span>
               )}
             </div>
@@ -417,7 +418,7 @@ function TemplateRow({ template, onSelect, onQuickApprove, onQuickReject, index 
           <div className="flex items-center justify-between mt-3">
             <span className="text-xs text-gray-400">{template.submittedOn}</span>
             <div className="flex items-center gap-1.5">
-              {template.status === 'pending' && (
+              {template.status === 'pending' && !template.submittedToMeta && (
                 <>
                   <button
                     onClick={(e) => { e.stopPropagation(); onQuickReject(template) }}
@@ -428,8 +429,9 @@ function TemplateRow({ template, onSelect, onQuickApprove, onQuickReject, index 
                   <button
                     onClick={(e) => { e.stopPropagation(); onQuickApprove(template.id) }}
                     className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors"
+                    title="This template never made it to Meta — submit it now"
                   >
-                    Approve
+                    Submit to Meta
                   </button>
                 </>
               )}

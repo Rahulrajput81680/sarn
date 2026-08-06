@@ -1,5 +1,6 @@
 const Campaign = require('../models/Campaign')
 const Contact  = require('../models/Contact')
+const Conversation = require('../models/Conversation')
 const Message  = require('../models/Message')
 const Template = require('../models/Template')
 const Tenant   = require('../models/Tenant')
@@ -8,6 +9,7 @@ const { success }  = require('../utils/apiResponse')
 const waService    = require('../services/whatsapp/whatsapp.service')
 const { translateMetaError } = require('../utils/metaErrors')
 const { checkWAConnected } = require('../utils/waGuard')
+const { getIO } = require('../config/socket')
 
 // GET /api/v1/campaigns
 const getCampaigns = asyncHandler(async (req, res) => {
@@ -160,19 +162,43 @@ const sendCampaign = asyncHandler(async (req, res) => {
         sent++
 
         // Create a Message record so webhook delivery/read events can update campaign stats
-        // (also the source of truth for the 24h same-contact/same-template dedup check above)
+        // (also the source of truth for the 24h same-contact/same-template dedup check above).
+        // Linked to the contact's open conversation so campaign sends show up in the Inbox
+        // like any other outbound message, instead of only existing in campaign stats.
         if (result?.messageId) {
-          await Message.create({
+          let conv = await Conversation.findOne({ tenant: campaign.tenant, contact: contact._id, status: 'open' })
+          if (!conv) {
+            conv = await Conversation.create({
+              tenant:  campaign.tenant,
+              contact: contact._id,
+              status:  'open',
+              window:  { open: false, expiresAt: null },
+            })
+          }
+
+          const text = `[Campaign: ${campaign.template.name}]`
+          const message = await Message.create({
+            conversation: conv._id,
             tenant: campaign.tenant,
             campaign: campaign._id,
             contact: contact._id,
             template: campaign.template._id,
             type: 'agent',
-            text: `[Campaign: ${campaign.template.name}]`,
+            text,
             status: 'sent',
             waMessageId: result.messageId,
             timestamp: new Date(),
-          }).catch(() => {})
+          }).catch(() => null)
+
+          if (message) {
+            await Conversation.findByIdAndUpdate(conv._id, {
+              lastMessage: { text, type: 'agent', time: new Date() },
+              updatedAt: new Date(),
+            })
+            const io = getIO()
+            io.to(`tenant:${campaign.tenant}`).emit('new_conversation_message', { conversationId: conv._id, message, contact })
+            io.to(`conv:${conv._id}`).emit('new_message', { message })
+          }
         }
 
         await Contact.findByIdAndUpdate(contact._id, { lastContactDate: new Date(), $inc: { messageCount: 1 } })

@@ -4,7 +4,64 @@ const User     = require('../models/User')
 const asyncHandler = require('../utils/asyncHandler')
 const { success }  = require('../utils/apiResponse')
 const waService    = require('../services/whatsapp/whatsapp.service')
+const { checkWAConnected } = require('../utils/waGuard')
 const { sendEmail, newTemplateSubmittedEmail, templateApprovedEmail, templateRejectedEmail } = require('../utils/emailService')
+
+// Submits a template to Meta for real review. Shared by the tenant-facing submit action and
+// the admin's manual retry/override action, so the Meta-submission handling (WABA connection
+// guard, the "name already in use" soft-success case, real failures) only lives in one place.
+async function submitTemplateToMeta(template, tenantId) {
+  const tenantDoc = await Tenant.findById(tenantId)
+    .select('+whatsapp.accessToken whatsapp.status whatsapp.phoneNumberId whatsapp.tokenExpiresAt')
+    .lean()
+  const waBlocked = checkWAConnected(tenantDoc)
+  if (waBlocked) {
+    return {
+      success: false,
+      message: `Connect your WhatsApp Business number in Settings before submitting templates (${waBlocked.code}).`,
+    }
+  }
+
+  try {
+    const result = await waService.submitTemplate(tenantId, {
+      name:       template.name,
+      category:   template.category,
+      language:   template.language,
+      components: template.components,
+    })
+    template.metaTemplateId = result.metaTemplateId
+    template.rejectionNote  = null // clear any note from a previous failed attempt
+
+    if (process.env.WA_PROVIDER !== 'meta') {
+      // Mock mode: no real Meta, so approve immediately
+      template.status = 'APPROVED'
+    } else {
+      // Real Meta: set PENDING — handleTemplateStatusWebhook flips it to APPROVED when Meta confirms
+      template.status = 'PENDING'
+    }
+  } catch (err) {
+    const metaMsg = err.response?.data?.error?.message || err.message
+
+    // Only treat "name already in use" as a soft success — that's the one failure mode where
+    // the template genuinely already exists on Meta's side under this WABA. Everything else
+    // (wrong WABA, expired token, a real validation error) must NOT be silently marked approved.
+    const alreadyExists = /already exist|name.*in use|duplicate/i.test(metaMsg)
+    if (alreadyExists) {
+      template.status = 'APPROVED'
+      template.rejectionNote = null
+    } else {
+      template.rejectionNote = `Meta submission failed: ${metaMsg}`
+      await template.save()
+      return { success: false, message: `Could not submit "${template.name}" to Meta: ${metaMsg}` }
+    }
+  }
+
+  await template.save()
+  return {
+    success: true,
+    message: process.env.WA_PROVIDER === 'meta' ? 'Submitted to Meta for review' : 'Template approved',
+  }
+}
 
 // Guard: all template routes require a tenant-linked account (not super_admin)
 const requireTenant = (req, res, next) => {
@@ -75,8 +132,9 @@ const deleteTemplate = asyncHandler(async (req, res) => {
 })
 
 // ── POST /api/v1/templates/:id/submit ────────────────────────────────────────
-// Client-side action: queues the template for admin review.
-// Does NOT touch Meta API — admin's approve action handles that.
+// Client-side action: submits the template straight to Meta for their review —
+// no internal admin approval gate. See submitTemplateToMeta above for the actual
+// submission handling (WABA guard, error cases, status transitions).
 const submitTemplate = asyncHandler(async (req, res) => {
   const template = await Template.findOne({ _id: req.params.id, tenant: req.tenantId })
   if (!template) return res.status(404).json({ success: false, message: 'Template not found' })
@@ -87,23 +145,24 @@ const submitTemplate = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Template is already pending review' })
   }
 
-  template.status = 'PENDING'
-  template.rejectionReason = null
-  template.rejectionNote   = null
-  await template.save()
+  const result = await submitTemplateToMeta(template, req.tenantId)
 
-  // Notify super_admin by email
-  const tenant = await Tenant.findById(req.tenantId).lean()
-  const admin  = await User.findOne({ role: 'super_admin' }).lean()
-  if (admin) {
-    sendEmail({
-      to: admin.email,
-      subject: `New template pending review — ${template.name}`,
-      html: newTemplateSubmittedEmail(template.name, tenant?.name || 'A client'),
-    }).catch(() => {})
+  if (!result.success) {
+    // Let the tenant know it failed, and notify super_admin so they can help — this is now
+    // the only case that needs a human, since successful submissions no longer wait on one.
+    const tenant = await Tenant.findById(req.tenantId).lean()
+    const admin  = await User.findOne({ role: 'super_admin' }).lean()
+    if (admin) {
+      sendEmail({
+        to: admin.email,
+        subject: `Template submission failed — ${template.name}`,
+        html: newTemplateSubmittedEmail(template.name, tenant?.name || 'A client'),
+      }).catch(() => {})
+    }
+    return res.status(502).json({ success: false, message: result.message })
   }
 
-  return success(res, { template }, 'Template submitted for admin review')
+  return success(res, { template }, result.message)
 })
 
 // ── POST /api/v1/templates/sync ───────────────────────────────────────────────
@@ -253,6 +312,7 @@ module.exports = {
   updateTemplate,
   deleteTemplate,
   submitTemplate,
+  submitTemplateToMeta,
   syncTemplatesFromMeta,
   handleTemplateStatusWebhook,
 }

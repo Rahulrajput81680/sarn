@@ -1,16 +1,22 @@
-// Run once to create the platform super_admin account:
+// Run once to create (or reset) the platform super_admin account:
 //   node scripts/createAdmin.js
-// Change email/password before running.
+// Reads credentials from .env — set ADMIN_EMAIL, ADMIN_PASSWORD (and optionally ADMIN_NAME)
+// before running. Never hardcode real credentials in this file — it's committed to git.
 
 require('dotenv').config()
 const mongoose = require('mongoose')
 const User     = require('../src/models/User')
 
-const ADMIN_EMAIL    = 'admin@sarnconnect.com'
-const ADMIN_PASSWORD = 'Sarnconnect@00'
-const ADMIN_NAME     = 'Platform Admin'
+const ADMIN_EMAIL    = process.env.ADMIN_EMAIL
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+const ADMIN_NAME     = process.env.ADMIN_NAME || 'Platform Admin'
 
 async function run() {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    console.error('Set ADMIN_EMAIL and ADMIN_PASSWORD in .env before running this script.')
+    process.exit(1)
+  }
+
   await mongoose.connect(process.env.MONGODB_URI)
   console.log('Connected to MongoDB')
 

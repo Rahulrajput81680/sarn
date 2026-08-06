@@ -9,8 +9,7 @@ const Message       = require('../models/Message')
 const WebhookLog    = require('../models/WebhookLog')
 const asyncHandler  = require('../utils/asyncHandler')
 const { success }   = require('../utils/apiResponse')
-const waService     = require('../services/whatsapp/whatsapp.service')
-const { checkWAConnected } = require('../utils/waGuard')
+const { submitTemplateToMeta } = require('./template.controller')
 const { sendEmail, templateApprovedEmail, templateRejectedEmail, accountSuspendedEmail, accountReactivatedEmail } = require('../utils/emailService')
 
 // GET /api/v1/admin/dashboard
@@ -222,66 +221,15 @@ const reviewTemplate = asyncHandler(async (req, res) => {
     return success(res, { template }, 'Template rejected')
   }
 
-  // action === 'approve': submit to Meta so it can actually be used in campaigns.
-  // Without this, Meta has never seen the template and all campaign sends will fail.
-  //
-  // Guard against the tenant not having real WhatsApp credentials — without this check,
-  // waService.submitTemplate() silently falls back to the shared platform/sandbox WABA
-  // (via tenantConfig.js), submitting the template to the WRONG business account entirely.
-  // Same class of bug as the messaging guard in waGuard.js, just for template submission.
-  const tenantDoc = await Tenant.findById(template.tenant)
-    .select('+whatsapp.accessToken whatsapp.status whatsapp.phoneNumberId whatsapp.tokenExpiresAt')
-    .lean()
-  const waBlocked = checkWAConnected(tenantDoc)
-  if (waBlocked) {
-    return res.status(403).json({
-      success: false,
-      message: `Cannot submit to Meta — this tenant's WhatsApp isn't properly connected (${waBlocked.code}). Have them reconnect in Settings before approving their templates.`,
-    })
+  // action === 'approve': tenants now submit straight to Meta themselves (see
+  // template.controller.js submitTemplate) — this action exists as a manual override/retry,
+  // e.g. re-attempting a submission that failed the first time once the underlying issue
+  // (WABA connection, token) has been fixed. Reuses the same submission logic so the WABA
+  // guard and error handling only live in one place.
+  const result = await submitTemplateToMeta(template, template.tenant)
+  if (!result.success) {
+    return res.status(502).json(result)
   }
-
-  try {
-    const result = await waService.submitTemplate(template.tenant, {
-      name:       template.name,
-      category:   template.category,
-      language:   template.language,
-      components: template.components,
-    })
-    template.metaTemplateId = result.metaTemplateId
-    template.rejectionNote  = null // clear any note from a previous failed attempt
-
-    if (process.env.WA_PROVIDER !== 'meta') {
-      // Mock mode: no real Meta, so approve immediately
-      template.status = 'APPROVED'
-    } else {
-      // Real Meta: set PENDING — handleTemplateStatusWebhook will set APPROVED when Meta confirms
-      template.status = 'PENDING'
-      console.log(`[Admin] Submitted "${template.name}" to Meta (ID: ${result.metaTemplateId}). Awaiting Meta review.`)
-    }
-  } catch (err) {
-    const metaCode = err.response?.data?.error?.error_subcode || err.response?.data?.error?.code
-    const metaMsg  = err.response?.data?.error?.message || err.message
-    console.warn(`[Admin] Auto-submit of "${template.name}" to Meta failed (code ${metaCode}): ${metaMsg}`)
-
-    // Only treat "name already in use" as a soft success — that's the one failure mode where
-    // the template genuinely already exists on Meta's side under this WABA. Everything else
-    // (wrong WABA, expired token, a real validation error) must NOT be silently marked approved —
-    // that's what let templates that Meta never saw look usable in campaigns.
-    const alreadyExists = /already exist|name.*in use|duplicate/i.test(metaMsg)
-    if (alreadyExists) {
-      template.status = 'APPROVED'
-      template.rejectionNote = null
-    } else {
-      template.rejectionNote = `Meta submission failed: ${metaMsg}`
-      await template.save()
-      return res.status(502).json({
-        success: false,
-        message: `Could not submit "${template.name}" to Meta: ${metaMsg}. The template was left as ${template.status} — fix the underlying issue (WABA/token) and try approving again.`,
-      })
-    }
-  }
-
-  await template.save()
 
   // Notify owner only when Meta has confirmed approval (APPROVED status set immediately in mock/fallback)
   if (template.status === 'APPROVED') {

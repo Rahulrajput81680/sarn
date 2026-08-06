@@ -5,7 +5,7 @@ import {
   Plus, Search, X, FileText, Image, Video, File,
   Type, Phone, Link, Zap, Copy, Trash2, Send, AlertTriangle,
   Clock, CheckCircle2, XCircle, ChevronDown, AlignLeft,
-  MoreHorizontal, RefreshCw,
+  MoreHorizontal,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PageHeader from '../../../components/layout/PageHeader'
@@ -664,10 +664,8 @@ function TemplateCard({ t, index, onEdit, onDuplicate, onDelete, onSubmit }) {
             <span className="text-xs text-gray-400">{t.language}</span>
           </div>
           {t.status === 'pending' && (
-            <p className={`text-[11px] mt-1 ${t.submittedToMeta ? 'text-blue-500' : 'text-gray-400'}`}>
-              {t.submittedToMeta
-                ? 'Submitted to Meta — awaiting their review (auto-updates once decided)'
-                : 'Awaiting admin review — not yet sent to Meta'}
+            <p className="text-[11px] mt-1 text-blue-500">
+              Submitted to Meta — awaiting their review (auto-updates once decided)
             </p>
           )}
         </div>
@@ -729,7 +727,6 @@ function TemplateCard({ t, index, onEdit, onDuplicate, onDelete, onSubmit }) {
 export default function Templates() {
   const [templates,   setTemplates]   = useState([])
   const [loading,     setLoading]     = useState(true)
-  const [syncing,     setSyncing]     = useState(false)
   const [statusTab,   setStatusTab]   = useState('all')
   const [search,      setSearch]      = useState('')
   const [drawerOpen,  setDrawerOpen]  = useState(false)
@@ -761,21 +758,6 @@ export default function Templates() {
     return acc
   }, {})
 
-  /* Sync from Meta WABA */
-  const handleSync = async () => {
-    setSyncing(true)
-    try {
-      const { data } = await api.post('/api/v1/templates/sync')
-      const { synced } = data.data
-      await fetchTemplates()
-      toast.success(`${synced} approved template${synced !== 1 ? 's' : ''} synced from Meta.`)
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Sync failed. Check your WABA credentials.')
-    } finally {
-      setSyncing(false)
-    }
-  }
-
   /* CRUD */
   const handleSave = async (form) => {
     const payload = {
@@ -796,9 +778,9 @@ export default function Templates() {
         setTemplates((ts) => [saved, ...ts])
       }
       if (form.status === 'pending') {
-        await api.post(`/api/v1/templates/${saved.id}/submit`)
+        const { data: subData } = await api.post(`/api/v1/templates/${saved.id}/submit`)
         setTemplates((ts) => ts.map((t) => t.id === saved.id ? { ...t, status: 'pending' } : t))
-        toast.success('Template submitted for review. Admin will forward it to Meta once approved.')
+        toast.success(subData.message || 'Submitted to Meta for review.')
       } else {
         toast.success('Template saved as draft.')
       }
@@ -837,9 +819,9 @@ export default function Templates() {
 
   const handleSubmit = async (id) => {
     try {
-      await api.post(`/api/v1/templates/${id}/submit`)
+      const { data } = await api.post(`/api/v1/templates/${id}/submit`)
       setTemplates((ts) => ts.map((t) => t.id === id ? { ...t, status: 'pending' } : t))
-      toast.success('Template submitted for review. Admin will forward it to Meta once approved.')
+      toast.success(data.message || 'Submitted to Meta for review.')
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to submit template.')
     }
@@ -856,17 +838,6 @@ export default function Templates() {
       <div className="flex items-start justify-between gap-3">
         <PageHeader title="Templates" description="Create and manage WhatsApp Business message templates" />
         <div className="flex items-center gap-2 shrink-0">
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={handleSync}
-            disabled={syncing}
-            title="Pull already-approved templates from your Meta WABA into this dashboard"
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
-          >
-            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-            {syncing ? 'Syncing…' : 'Sync from Meta'}
-          </motion.button>
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={openCreate}
