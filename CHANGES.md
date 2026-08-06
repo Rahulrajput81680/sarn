@@ -1,5 +1,6 @@
 # SarnConnect — Backend Integration & Feature Changes
 
+
 ## Overview
 
 This document covers every file added or modified to build the full backend, wire the frontend to real APIs, and enable the Messages feature with real-time Socket.io — all without requiring the Meta WhatsApp API.
