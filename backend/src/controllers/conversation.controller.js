@@ -10,6 +10,7 @@ const waService = require('../services/whatsapp/whatsapp.service')
 const { translateMetaError } = require('../utils/metaErrors')
 const { mimeToMediaType } = require('../utils/multerConfig')
 const { checkWAConnected } = require('../utils/waGuard')
+const { normalizePhone } = require('../utils/phone')
 
 // GET /api/v1/conversations
 const getConversations = asyncHandler(async (req, res) => {
@@ -154,8 +155,9 @@ const simulateIncoming = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Not available in production' })
   }
 
-  const { phone, message: text, name: contactName } = req.body
-  if (!phone || !text) return res.status(400).json({ success: false, message: 'phone and message are required' })
+  const { phone: rawPhone, message: text, name: contactName } = req.body
+  if (!rawPhone || !text) return res.status(400).json({ success: false, message: 'phone and message are required' })
+  const phone = normalizePhone(rawPhone) || rawPhone
 
   let contact = await Contact.findOne({ tenant: req.tenantId, phone })
   if (!contact) {

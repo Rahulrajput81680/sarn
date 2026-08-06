@@ -10,6 +10,7 @@ const WebhookLog = require('../models/WebhookLog')
 const { getIO } = require('../config/socket')
 const { handleTemplateStatusWebhook } = require('../controllers/template.controller')
 const waService = require('../services/whatsapp/whatsapp.service')
+const { normalizePhone } = require('../utils/phone')
 
 // ── Opt-out keywords (Meta policy — must honor STOP/UNSUBSCRIBE) ──────────────
 const OPT_OUT_KEYWORDS = new Set(['stop', 'unsubscribe', 'optout', 'opt out', 'cancel', 'quit', 'end', 'block'])
@@ -101,7 +102,9 @@ async function upsertInboundMessage(tenantId, phone, waId, timestamp, text, medi
 // ── Handle one incoming message ───────────────────────────────────────────────
 async function handleMessage(msg, tenantId) {
   const start   = Date.now()
-  const phone   = msg.from
+  // Meta sends `from` as bare digits (no leading +) — normalize to E.164 so this
+  // matches contacts created manually/via import, which are stored with a + prefix.
+  const phone   = normalizePhone(msg.from) || msg.from
   const waId    = msg.id
   const msgType = msg.type // 'text', 'image', 'video', 'audio', 'document', etc.
 
