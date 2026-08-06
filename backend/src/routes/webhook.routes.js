@@ -238,13 +238,6 @@ async function handleStatus(status, tenantId) {
   if (!mapped) return
 
   try {
-    // Meta commonly resends the same status webhook event (retries when it doesn't get a fast
-    // 200, or just duplicate delivery). Without checking the prior status, a repeated 'delivered'
-    // or 'read' event increments campaign stats again for the same message — this is why campaign
-    // delivered/read counts could climb past the actual recipient count.
-    const before = await Message.findOne({ waMessageId: status.id }).select('status campaign conversation').lean()
-    const isNewStatus = before && before.status !== mapped
-
     const msg = await Message.findOneAndUpdate(
       { waMessageId: status.id },
       { status: mapped },
@@ -256,16 +249,11 @@ async function handleStatus(status, tenantId) {
         .to(`conv:${msg.conversation}`)
         .emit('message_status', { messageId: msg._id, waMessageId: status.id, status: mapped })
 
-      if (msg.campaign && isNewStatus) {
+      if (msg.campaign) {
         if (mapped === 'delivered') {
           await Campaign.findByIdAndUpdate(msg.campaign, { $inc: { 'stats.delivered': 1 } })
         } else if (mapped === 'read') {
           await Campaign.findByIdAndUpdate(msg.campaign, { $inc: { 'stats.read': 1 } })
-        } else if (mapped === 'failed') {
-          // A message that was accepted at send time (counted in stats.sent) can still fail
-          // asynchronously later — without this branch it showed up in neither delivered nor
-          // failed, i.e. recipients that silently never got the message with no visible reason.
-          await Campaign.findByIdAndUpdate(msg.campaign, { $inc: { 'stats.failed': 1 } })
         }
       }
     }
