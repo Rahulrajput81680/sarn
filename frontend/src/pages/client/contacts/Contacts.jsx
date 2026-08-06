@@ -334,6 +334,8 @@ function ImportModal({ onClose, onImport }) {
 
 function RowMenu({ contact, onEdit, onDelete, onToggleBlock, onNotes }) {
   const [open, setOpen] = useState(false)
+  const [coords, setCoords] = useState(null)
+  const btnRef = useRef(null)
   const items = [
     { key: 'edit',   label: 'Edit',              icon: Edit2 },
     { key: 'notes',  label: 'View Notes',         icon: StickyNote },
@@ -342,35 +344,51 @@ function RowMenu({ contact, onEdit, onDelete, onToggleBlock, onNotes }) {
   ]
   const handlers = { edit: onEdit, notes: onNotes, block: onToggleBlock, delete: onDelete }
 
+  // Menu is portaled to <body> and positioned via fixed coords so it never gets
+  // clipped by the table card's `overflow-hidden` (rows near the bottom would
+  // otherwise have the dropdown cut off).
+  const toggleOpen = () => {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      const menuHeight = items.length * 34 + 8
+      const openUpward = window.innerHeight - rect.bottom < menuHeight
+      setCoords({
+        left: rect.right - 148,
+        top: openUpward ? rect.top - menuHeight - 4 : rect.bottom + 4,
+      })
+    }
+    setOpen((o) => !o)
+  }
+
   return (
     <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+      <button ref={btnRef} onClick={toggleOpen} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
         <MoreHorizontal size={14} />
       </button>
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -4 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -4 }}
-              transition={{ duration: 0.14, ease: EASE_OUT }}
-              className="absolute right-0 top-8 z-20 bg-white rounded-xl shadow-lg border border-gray-100 py-1 min-w-[148px]"
-            >
-              {items.map(({ key, label, icon: Icon, danger }) => (
-                <button
-                  key={key}
-                  onClick={() => { handlers[key](); setOpen(false) }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${danger ? 'text-red-600' : 'text-gray-700'}`}
-                >
-                  <Icon size={13} /> {label}
-                </button>
-              ))}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {open && coords && createPortal(
+        <AnimatePresence>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -4 }}
+            transition={{ duration: 0.14, ease: EASE_OUT }}
+            style={{ position: 'fixed', top: coords.top, left: coords.left }}
+            className="z-50 bg-white rounded-xl shadow-lg border border-gray-100 py-1 min-w-[148px]"
+          >
+            {items.map(({ key, label, icon: Icon, danger }) => (
+              <button
+                key={key}
+                onClick={() => { handlers[key](); setOpen(false) }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${danger ? 'text-red-600' : 'text-gray-700'}`}
+              >
+                <Icon size={13} /> {label}
+              </button>
+            ))}
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   )
 }

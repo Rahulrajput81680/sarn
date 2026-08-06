@@ -2,6 +2,8 @@ const { parse } = require('csv-parse/sync')
 const fs = require('fs')
 const Contact = require('../models/Contact')
 const Tenant  = require('../models/Tenant')
+const Conversation = require('../models/Conversation')
+const Message = require('../models/Message')
 const asyncHandler = require('../utils/asyncHandler')
 const { success }  = require('../utils/apiResponse')
 const { normalizePhone } = require('../utils/phone')
@@ -86,6 +88,11 @@ const updateContact = asyncHandler(async (req, res) => {
 const deleteContact = asyncHandler(async (req, res) => {
   const contact = await Contact.findOneAndDelete({ _id: req.params.id, tenant: req.tenantId })
   if (!contact) return res.status(404).json({ success: false, message: 'Contact not found' })
+
+  const convIds = await Conversation.find({ tenant: req.tenantId, contact: contact._id }).distinct('_id')
+  await Message.deleteMany({ tenant: req.tenantId, $or: [{ contact: contact._id }, { conversation: { $in: convIds } }] })
+  await Conversation.deleteMany({ _id: { $in: convIds } })
+
   await Tenant.findByIdAndUpdate(req.tenantId, { $inc: { 'usage.contacts': -1 } })
   return success(res, {}, 'Contact deleted')
 })
@@ -94,6 +101,11 @@ const deleteContact = asyncHandler(async (req, res) => {
 const bulkDeleteContacts = asyncHandler(async (req, res) => {
   const { ids } = req.body
   if (!ids?.length) return res.status(400).json({ success: false, message: 'No contact IDs provided' })
+
+  const convIds = await Conversation.find({ tenant: req.tenantId, contact: { $in: ids } }).distinct('_id')
+  await Message.deleteMany({ tenant: req.tenantId, $or: [{ contact: { $in: ids } }, { conversation: { $in: convIds } }] })
+  await Conversation.deleteMany({ _id: { $in: convIds } })
+
   const result = await Contact.deleteMany({ _id: { $in: ids }, tenant: req.tenantId })
   await Tenant.findByIdAndUpdate(req.tenantId, { $inc: { 'usage.contacts': -result.deletedCount } })
   return success(res, { deleted: result.deletedCount }, `${result.deletedCount} contacts deleted`)

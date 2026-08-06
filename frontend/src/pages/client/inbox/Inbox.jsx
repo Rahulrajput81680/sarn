@@ -109,7 +109,7 @@ function ConvItem({ c, active, onClick, team }) {
             )}
             {c.window?.open && (
               <span className="flex items-center gap-0.5 text-[10px] font-medium text-green-600 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full">
-                <Clock size={8} /> {c.window.expiresIn}
+                <Clock size={8} /> {fmtCountdown(c.window.expiresAt)} left
               </span>
             )}
             {assignee && (
@@ -486,6 +486,17 @@ const fmtTime = (d) => {
   return date.toLocaleDateString()
 }
 
+// Time remaining until a future timestamp (the WhatsApp 24h reply window) — the
+// opposite direction from fmtTime, which formats how long ago something was.
+const fmtCountdown = (expiresAt) => {
+  if (!expiresAt) return ''
+  const diff = (new Date(expiresAt) - Date.now()) / 1000
+  if (diff <= 0) return 'expired'
+  if (diff < 60) return `${Math.ceil(diff)}s`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`
+  return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`
+}
+
 const normalizeConv = (c) => ({
   id: c._id,
   contactId: c.contact?._id || c.contact || null,
@@ -499,9 +510,7 @@ const normalizeConv = (c) => ({
   labels: c.labels || [],
   lastMsg: c.lastMessage?.text || '',
   time: fmtTime(c.updatedAt),
-  window: c.window?.open
-    ? { open: true, expiresIn: c.window.expiresAt ? fmtTime(c.window.expiresAt) + ' left' : '' }
-    : { open: false, expiresIn: null },
+  window: { open: !!c.window?.open, expiresAt: c.window?.expiresAt || null },
   _id: c._id,
 })
 
@@ -818,10 +827,18 @@ export default function Inbox() {
   const [sendingMedia, setSendingMedia] = useState(false)
   const msgEndRef  = useRef(null)
   const fileInputRef = useRef(null)
+  const [, setClockTick] = useState(0) // forces re-render so window countdowns stay live
 
   const conv     = convs.find((c) => c.id === activeId)
   const msgs     = messages[activeId] || []
   const assignee = team.find((t) => t.id === conv?.assignee)
+
+  // Re-render every 30s so the 24h window countdown ("closes in Xh Ym") ticks
+  // down in real time instead of freezing at whatever it read on last fetch.
+  useEffect(() => {
+    const t = setInterval(() => setClockTick((n) => n + 1), 30000)
+    return () => clearInterval(t)
+  }, [])
 
   // ── Fetch team members ───────────────────────────────────
   useEffect(() => {
@@ -861,16 +878,19 @@ export default function Inbox() {
   }, [activeId])
 
   // ── Socket.io real-time ──────────────────────────────────
+  // Connect once per session — must NOT depend on activeId, or switching
+  // conversations tears down and reopens the whole socket on every click,
+  // dropping any event that arrives mid-reconnect.
   useEffect(() => {
     connectSocket(token) // sends JWT; backend middleware auto-joins tenant room
-    if (activeId) socket.emit('join_conversation', activeId)
 
     socket.on('new_message', ({ message }) => {
       const convId = message.conversation
-      setMessages(m => ({
-        ...m,
-        [convId]: [...(m[convId] || []), normalizeMsg(message)],
-      }))
+      // Only append if that conversation's history is already loaded — otherwise this
+      // would seed messages[convId] with just this one message, and the fetch effect
+      // above (which skips fetching once messages[activeId] is set) would never pull
+      // the real history when the conversation is opened later.
+      setMessages(m => (m[convId] ? { ...m, [convId]: [...m[convId], normalizeMsg(message)] } : m))
       setConvs(cs => cs.map(c => c.id === convId
         ? { ...c, lastMsg: message.text, unread: message.type === 'customer' ? c.unread + 1 : c.unread }
         : c
@@ -878,14 +898,21 @@ export default function Inbox() {
     })
 
     socket.on('new_conversation_message', ({ conversationId }) => {
-      // Refresh conversations on new message without overwriting optimistic local state
+      // Refresh conversations on new message without overwriting optimistic local state.
+      // Also inserts conversations that don't exist locally yet — e.g. a brand-new
+      // contact's first-ever message — which a plain "update matching rows" merge
+      // would silently drop until the next manual reload.
       axiosInstance.get('/api/v1/conversations', { params: { filter: filterTab } })
         .then(({ data }) => {
           const fresh = (data.data?.conversations || []).map(normalizeConv)
-          setConvs(cs => cs.map(c => {
-            const updated = fresh.find(f => f.id === c.id)
-            return updated ? { ...c, ...updated, labels: c.labels } : c
-          }))
+          setConvs(cs => {
+            const merged = cs.map(c => {
+              const updated = fresh.find(f => f.id === c.id)
+              return updated ? { ...c, ...updated, labels: c.labels } : c
+            })
+            const newOnes = fresh.filter(f => !cs.some(c => c.id === f.id))
+            return [...newOnes, ...merged]
+          })
         })
         .catch(() => {})
     })
@@ -900,7 +927,15 @@ export default function Inbox() {
       socket.off('conversation_updated')
       disconnectSocket()
     }
-  }, [activeId, user])
+  }, [token])
+
+  // Join/leave the active conversation's room independently of the socket
+  // connection lifecycle above.
+  useEffect(() => {
+    if (!activeId) return
+    socket.emit('join_conversation', activeId)
+    return () => socket.emit('leave_conversation', activeId)
+  }, [activeId])
 
   useEffect(() => { msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
 
@@ -1191,7 +1226,7 @@ export default function Inbox() {
               )}
               {conv.window?.open && (
                 <div className="flex items-center gap-1.5 mb-1.5 text-xs text-green-600">
-                  <Clock size={10} /> <span>24h window open · closes in <strong>{conv.window.expiresIn}</strong></span>
+                  <Clock size={10} /> <span>24h window open · closes in <strong>{fmtCountdown(conv.window.expiresAt)}</strong></span>
                 </div>
               )}
 
