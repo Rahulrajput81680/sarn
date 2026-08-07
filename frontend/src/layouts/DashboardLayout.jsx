@@ -3,12 +3,13 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Send, Users, MessageSquare, FileText,
   Bell, Search, LogOut, PanelLeftClose, PanelLeftOpen, Wifi, WifiOff, MoreVertical, Phone,
-  UserCircle, Settings, AlertTriangle, ArrowRight,
+  UserCircle, Settings, AlertTriangle, ArrowRight, X,
 } from 'lucide-react'
 import clsx from 'clsx'
 import useAuthStore from '../store/authStore'
 import useUIStore from '../store/uiStore'
 import OnboardingWizard from '../components/onboarding/OnboardingWizard'
+import axiosInstance from '../api/axios'
 
 const NAV = [
   { label: 'Dashboard',      icon: LayoutDashboard, to: '/dashboard' },
@@ -211,6 +212,165 @@ function SidebarContent({ sidebarOpen, onNavClick = () => {} }) {
   )
 }
 
+function HeaderSearch() {
+  const navigate = useNavigate()
+  const containerRef = useRef(null)
+  const [query,       setQuery]       = useState('')
+  const [results,     setResults]     = useState({ contacts: [], conversations: [] })
+  const [loading,     setLoading]     = useState(false)
+  const [open,        setOpen]        = useState(false)
+  const [mobileOpen,  setMobileOpen]  = useState(false)
+
+  // Close on outside click
+  useEffect(() => {
+    const onClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false)
+        setMobileOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
+  // Debounced search across contacts + conversations
+  useEffect(() => {
+    const q = query.trim()
+    if (!q) {
+      setResults({ contacts: [], conversations: [] })
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    const t = setTimeout(() => {
+      Promise.all([
+        axiosInstance.get('/api/v1/contacts', { params: { search: q, limit: 5 } }),
+        axiosInstance.get('/api/v1/conversations', { params: { search: q, limit: 5 } }),
+      ])
+        .then(([cRes, convRes]) => {
+          setResults({
+            contacts:      cRes.data.data?.contacts || [],
+            conversations: convRes.data.data?.conversations || [],
+          })
+        })
+        .catch(() => setResults({ contacts: [], conversations: [] }))
+        .finally(() => setLoading(false))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const reset = () => { setQuery(''); setOpen(false); setMobileOpen(false) }
+
+  const goToContact = (c) => {
+    reset()
+    navigate(`/contacts?q=${encodeURIComponent(c.phone || c.name)}`)
+  }
+
+  const goToConversation = (c) => {
+    reset()
+    navigate(`/inbox?conversationId=${c._id}`)
+  }
+
+  const hasResults   = results.contacts.length > 0 || results.conversations.length > 0
+  const showDropdown = open && query.trim().length > 0
+
+  const dropdown = showDropdown && (
+    <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 max-h-96 overflow-y-auto z-50">
+      {loading ? (
+        <p className="px-3 py-3 text-xs text-gray-400 text-center">Searching…</p>
+      ) : !hasResults ? (
+        <p className="px-3 py-3 text-xs text-gray-400 text-center">No results for "{query}"</p>
+      ) : (
+        <>
+          {results.contacts.length > 0 && (
+            <div className="mb-1">
+              <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Contacts</p>
+              {results.contacts.map((c) => (
+                <button
+                  key={c._id}
+                  onClick={() => goToContact(c)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+                >
+                  <span className="w-7 h-7 rounded-full bg-green-100 text-green-700 text-xs font-bold flex items-center justify-center shrink-0">
+                    {(c.name || '?').slice(0, 2).toUpperCase()}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-gray-800 truncate">{c.name}</span>
+                    <span className="block text-xs text-gray-400 font-mono truncate">{c.phone}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {results.conversations.length > 0 && (
+            <div>
+              <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Conversations</p>
+              {results.conversations.map((c) => (
+                <button
+                  key={c._id}
+                  onClick={() => goToConversation(c)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+                >
+                  <span className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center shrink-0">
+                    {(c.contact?.name || '?').slice(0, 2).toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-gray-800 truncate">{c.contact?.name || 'Unknown'}</span>
+                    <span className="block text-xs text-gray-400 truncate">{c.lastMessage?.text || 'No messages yet'}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+
+  return (
+    <div ref={containerRef} className="relative flex-1 max-w-sm">
+      {/* Desktop: always-visible input */}
+      <div className="relative hidden sm:block">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); e.currentTarget.blur() } }}
+          placeholder="Search contacts, conversations…"
+          className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500"
+        />
+        {dropdown}
+      </div>
+
+      {/* Mobile: icon toggles an inline input */}
+      <div className="sm:hidden">
+        {mobileOpen ? (
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+              onKeyDown={(e) => { if (e.key === 'Escape') reset() }}
+              placeholder="Search…"
+              className="w-full pl-8 pr-8 py-1.5 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <button onClick={reset} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X size={14} />
+            </button>
+            {dropdown}
+          </div>
+        ) : (
+          <button onClick={() => { setMobileOpen(true); setOpen(true) }} className="p-1.5 text-gray-400 hover:text-gray-600">
+            <Search size={18} />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardLayout() {
   const { user, isOnboarded } = useAuthStore()
   const { sidebarOpen, toggleSidebar } = useUIStore()
@@ -270,16 +430,7 @@ export default function DashboardLayout() {
           </button>
 
           {/* Search - full on md+, icon button on mobile */}
-          <div className="relative flex-1 max-w-sm hidden sm:block">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              placeholder="Search…"
-              className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <button className="sm:hidden p-1.5 text-gray-400 hover:text-gray-600">
-            <Search size={18} />
-          </button>
+          <HeaderSearch />
 
           {/* Right section */}
           <div className="flex items-center gap-1 md:gap-2 ml-auto">

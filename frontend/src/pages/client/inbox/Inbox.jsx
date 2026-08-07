@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, CheckCheck, Check, Send, StickyNote,
@@ -705,6 +706,7 @@ function NewConversationModal({ onClose, onStarted, initialContact = null }) {
 
 export default function Inbox() {
   const { user, token } = useAuthStore()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [convs,       setConvs]       = useState([])
   const [messages,    setMessages]    = useState({})
   const [team,        setTeam]        = useState([])
@@ -746,12 +748,27 @@ export default function Inbox() {
   }, [])
 
   // ── Fetch conversations ──────────────────────────────────
+  // Deep link from the header search ("jump to this conversation") — read once on mount,
+  // ref so it doesn't need to be a dependency and doesn't retrigger on later refetches.
+  const deepLinkIdRef = useRef(searchParams.get('conversationId'))
+
   const fetchConvs = useCallback(async () => {
     try {
       const { data } = await axiosInstance.get('/api/v1/conversations', { params: { filter: filterTab } })
       const normalized = (data.data?.conversations || []).map(normalizeConv)
       setConvs(normalized)
-      if (normalized.length && !activeId) setActiveId(normalized[0].id)
+      if (!activeId) {
+        const deepLinkId = deepLinkIdRef.current
+        const match = deepLinkId && normalized.find(c => c.id === deepLinkId)
+        if (match) {
+          deepLinkIdRef.current = null
+          setActiveId(match.id)
+          setShowList(false)
+          setSearchParams({}, { replace: true })
+        } else if (normalized.length) {
+          setActiveId(normalized[0].id)
+        }
+      }
     } catch {
       setConvs([])
     } finally {

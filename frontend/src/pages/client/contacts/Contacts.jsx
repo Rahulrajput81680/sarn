@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -529,9 +530,10 @@ function FilterPanel({ filters, onChange }) {
 const DEFAULT_FILTERS = { tags: [], campaignActivity: 'Any', lastResponse: 'Any', city: '', source: '' }
 
 export default function Contacts() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [contacts,   setContacts]   = useState([])
   const [loading,    setLoading]    = useState(true)
-  const [search,     setSearch]     = useState('')
+  const [search,     setSearch]     = useState(searchParams.get('q') || '')
   const [editTarget, setEditTarget] = useState(null)   // null=closed, false=new, obj=editing
   const [notesTarget,setNotesTarget]= useState(null)
   const [showImport, setShowImport] = useState(false)
@@ -554,6 +556,11 @@ export default function Contacts() {
   }, [])
 
   useEffect(() => { fetchContacts() }, [fetchContacts])
+
+  // Clear the ?q= param once consumed so it doesn't linger if the user edits the search box
+  useEffect(() => {
+    if (searchParams.get('q')) setSearchParams({}, { replace: true })
+  }, [])
 
   /* Filter logic */
   const filtered = contacts.filter((c) => {
