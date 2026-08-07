@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { Link, NavLink } from "react-router-dom"
 import { Menu, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { Button } from "@/components/landing/LandingUi"
+import clsx from "clsx"
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -33,7 +33,7 @@ export default function Navbar() {
                 key={link.to}
                 to={link.to}
                 className={({ isActive }) =>
-                  cn(
+                  clsx(
                     "text-sm font-medium transition-colors",
                     isActive
                       ? "text-blue-400"
@@ -44,7 +44,7 @@ export default function Navbar() {
                 {link.label}
               </NavLink>
             ))}
-            <Link to="/contact">
+            <Link to="/login">
               <Button className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6">
                 Get Started
               </Button>
@@ -70,7 +70,7 @@ export default function Navbar() {
                 to={link.to}
                 onClick={() => setIsOpen(false)}
                 className={({ isActive }) =>
-                  cn(
+                  clsx(
                     "block text-sm font-medium transition-colors",
                     isActive
                       ? "text-blue-400"
@@ -81,7 +81,7 @@ export default function Navbar() {
                 {link.label}
               </NavLink>
             ))}
-            <Link to="/contact" onClick={() => setIsOpen(false)}>
+            <Link to="/login" onClick={() => setIsOpen(false)}>
               <Button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold">
                 Get Started
               </Button>

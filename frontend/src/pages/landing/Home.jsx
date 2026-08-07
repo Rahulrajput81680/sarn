@@ -1,7 +1,6 @@
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Button, Card, CardContent } from "@/components/landing/LandingUi"
 import { Megaphone, MessageCircle, BarChart3, TrendingUp, ArrowRight, Shield, Award, Building2 } from "lucide-react"
 
 const services = [
@@ -67,7 +66,7 @@ export default function Home() {
               SARN Connect delivers data-driven advertising, market research, and WhatsApp business communication services to help your brand thrive.
             </p>
             <div className="flex justify-center gap-4 mt-10 flex-wrap">
-              <Link to="/contact">
+              <Link to="/login">
                 <Button className="px-8 py-6 text-base rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold">
                   Get Started <ArrowRight size={18} className="ml-2" />
                 </Button>

@@ -1,7 +1,6 @@
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Button, Card, CardContent } from "@/components/landing/LandingUi"
 import { Megaphone, MessageCircle, BarChart3, TrendingUp, ArrowRight, CheckCircle } from "lucide-react"
 
 const servicesData = [
@@ -102,7 +101,7 @@ export default function Services() {
                       <h2 className="text-2xl lg:text-3xl font-bold text-white mb-3">{service.title}</h2>
                       <p className="text-blue-300 text-sm font-medium mb-4">{service.tagline}</p>
                       <p className="text-gray-400 leading-relaxed mb-6">{service.description}</p>
-                      <Link to="/contact">
+                      <Link to="/login">
                         <Button className="bg-blue-500 hover:bg-blue-600 text-white font-semibold">
                           Get Started <ArrowRight size={16} className="ml-2" />
                         </Button>

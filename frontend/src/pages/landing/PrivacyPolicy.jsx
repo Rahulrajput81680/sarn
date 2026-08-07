@@ -128,7 +128,7 @@ export default function PrivacyPolicy() {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}

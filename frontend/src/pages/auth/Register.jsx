@@ -135,9 +135,9 @@ export default function Register() {
 
               <p className="text-xs text-gray-400 leading-relaxed">
                 By proceeding, you agree to our{' '}
-                <a href="#" className="text-green-600 hover:underline">Terms of Service</a>
+                <Link to="/terms" className="text-green-600 hover:underline">Terms of Service</Link>
                 {' '}and{' '}
-                <a href="#" className="text-green-600 hover:underline">Privacy Policy</a>
+                <Link to="/privacy-policy" className="text-green-600 hover:underline">Privacy Policy</Link>
               </p>
 
               <Button type="submit" loading={isSubmitting} className="w-full justify-center">

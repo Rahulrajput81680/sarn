@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/landing/LandingUi"
 import { MapPin, Phone, Mail, Clock } from "lucide-react"
 
 export default function Contact() {

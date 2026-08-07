@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/landing/LandingUi"
 import { MapPin, Calendar, FileCheck, Briefcase, Target, Eye, User } from "lucide-react"
 
 export default function About() {

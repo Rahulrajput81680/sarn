@@ -4,12 +4,22 @@ import DashboardLayout from '../layouts/DashboardLayout'
 import AdminLayout from '../layouts/AdminLayout'
 import ProtectedRoute from './ProtectedRoute'
 import RoleRoute from './RoleRoute'
+import Navbar from '../components/Navbar'
+import Footer from '../components/Footer'
 
 // Auth pages
 import Login from '../pages/auth/Login'
 import Register from '../pages/auth/Register'
 import ForgotPassword from '../pages/auth/ForgotPassword'
 import AdminLogin from '../pages/auth/AdminLogin'
+
+// Landing pages
+import Home from '../pages/landing/Home'
+import About from '../pages/landing/About'
+import Services from '../pages/landing/Services'
+import Contact from '../pages/landing/Contact'
+import PrivacyPolicy from '../pages/landing/PrivacyPolicy'
+import Terms from '../pages/landing/Terms'
 
 // Admin pages
 import AdminDashboard from '../pages/admin/AdminDashboard'
@@ -61,10 +71,28 @@ import Billing from '../pages/client/billing/Billing'
 import Profile from '../pages/client/profile/Profile'
 import Settings from '../pages/client/settings/Settings'
 
+function LandingPage({ children }) {
+  return (
+    <div className="min-h-screen bg-[#0f172a]">
+      <Navbar />
+      {children}
+      <Footer />
+    </div>
+  )
+}
+
 export default function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Landing */}
+        <Route path="/" element={<LandingPage><Home /></LandingPage>} />
+        <Route path="/about" element={<LandingPage><About /></LandingPage>} />
+        <Route path="/services" element={<LandingPage><Services /></LandingPage>} />
+        <Route path="/contact" element={<LandingPage><Contact /></LandingPage>} />
+        <Route path="/privacy-policy" element={<LandingPage><PrivacyPolicy /></LandingPage>} />
+        <Route path="/terms" element={<LandingPage><Terms /></LandingPage>} />
+
         {/* Auth */}
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<Login />} />
@@ -155,7 +183,6 @@ export default function AppRouter() {
           <Route path="/admin/email-templates" element={<EmailTemplates />} />
         </Route>
 
-        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
