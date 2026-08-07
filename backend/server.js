@@ -19,9 +19,11 @@ const app = require('./src/app')
 const connectDB = require('./src/config/db')
 const { initSocket } = require('./src/config/socket')
 const { sweepTokenExpiry } = require('./src/services/whatsapp/tokenExpirySweep')
+const { sweepScheduledCampaigns } = require('./src/services/scheduledCampaignSweep')
 
 const PORT = process.env.PORT || 5000
 const TOKEN_SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
+const CAMPAIGN_SWEEP_INTERVAL_MS = 60 * 1000 // 1 minute — scheduled sends should start close to on-time
 
 connectDB().then(() => {
   const server = http.createServer(app)
@@ -37,6 +39,10 @@ connectDB().then(() => {
     sweepTokenExpiry()
     setInterval(sweepTokenExpiry, TOKEN_SWEEP_INTERVAL_MS)
   }
+
+  // Starts scheduled bulk campaigns once their picked send time arrives.
+  sweepScheduledCampaigns()
+  setInterval(sweepScheduledCampaigns, CAMPAIGN_SWEEP_INTERVAL_MS)
 }).catch((err) => {
   console.error('[SarnConnect] Failed to connect to DB:', err.message)
   process.exit(1)

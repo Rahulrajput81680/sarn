@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Shield, Bell, Smartphone, Zap, Lock, AlertTriangle,
-  Eye, EyeOff, Copy, RefreshCw, Check, LogOut, Trash2,
-  Key, Webhook, Globe,
-  ChevronRight, CheckCircle2, XCircle, Clock, Unplug,
+  Shield, Bell, Smartphone, AlertTriangle,
+  Eye, EyeOff, Check, LogOut, Trash2,
+  CheckCircle2, XCircle, Clock, Unplug,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { toast } from 'sonner'
@@ -21,21 +20,10 @@ const TABS = [
   { id: 'account',       label: 'Account',           icon: Shield },
   { id: 'notifications', label: 'Notifications',      icon: Bell },
   { id: 'whatsapp',      label: 'WhatsApp Business',  icon: Smartphone },
-  { id: 'api',           label: 'API & Webhooks',     icon: Zap },
   { id: 'danger',        label: 'Danger Zone',        icon: AlertTriangle },
 ]
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
-const WEBHOOK_EVENTS = [
-  { id: 'message.sent',       label: 'Message Sent' },
-  { id: 'message.delivered',  label: 'Message Delivered' },
-  { id: 'message.read',       label: 'Message Read' },
-  { id: 'message.failed',     label: 'Message Failed' },
-  { id: 'contact.opted_in',   label: 'Contact Opted In' },
-  { id: 'campaign.completed', label: 'Campaign Completed' },
-  { id: 'template.approved',  label: 'Template Approved' },
-]
 
 const DEFAULT_SCHEDULE = DAYS.map((day, i) => ({
   day,
@@ -115,21 +103,24 @@ function AccountTab() {
             { label: 'New Password',     key: 'newPw',   show: showNew,     toggle: () => setShowNew(v => !v) },
             { label: 'Confirm Password', key: 'confirm', show: showConfirm, toggle: () => setShowConfirm(v => !v) },
           ].map(({ label, key, show, toggle }) => (
-            <div key={key} className="relative">
-              <Input
-                label={label}
-                type={show ? 'text' : 'password'}
-                value={pw[key]}
-                onChange={e => setPw(p => ({ ...p, [key]: e.target.value }))}
-                placeholder="••••••••"
-              />
-              <button
-                type="button"
-                onClick={toggle}
-                className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600"
-              >
-                {show ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
+            <div key={key} className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-700">{label}</label>
+              <div className="relative">
+                <input
+                  type={show ? 'text' : 'password'}
+                  value={pw[key]}
+                  onChange={e => setPw(p => ({ ...p, [key]: e.target.value }))}
+                  placeholder="••••••••"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 pr-9 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-shadow"
+                />
+                <button
+                  type="button"
+                  onClick={toggle}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {show ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
             </div>
           ))}
 
@@ -501,144 +492,6 @@ function WhatsAppTab({ initialWASettings, whatsapp, onWhatsAppChange }) {
   )
 }
 
-/* ───────── TAB: API & WEBHOOKS ───────── */
-function APITab({ initialWebhookUrl, initialWebhookEvents }) {
-  const [liveKey,     setLiveKey]     = useState(null)
-  const [masked,      setMasked]      = useState(true)
-  const [regenerating, setRegenerating] = useState(false)
-  const [webhookUrl,   setWebhookUrl]   = useState(initialWebhookUrl || '')
-  const [savingWebhook, setSavingWebhook] = useState(false)
-  const [selectedEvents, setSelectedEvents] = useState(
-    new Set(initialWebhookEvents?.length ? initialWebhookEvents : ['message.sent', 'message.delivered', 'message.failed'])
-  )
-
-  useEffect(() => {
-    setWebhookUrl(initialWebhookUrl || '')
-    setSelectedEvents(new Set(initialWebhookEvents?.length ? initialWebhookEvents : ['message.sent', 'message.delivered', 'message.failed']))
-  }, [initialWebhookUrl, initialWebhookEvents])
-
-  const displayKey = liveKey
-    ? (masked ? `sk_live_${'•'.repeat(24)}${liveKey.slice(-4)}` : liveKey)
-    : null
-
-  const copyKey = () => {
-    if (!liveKey) return
-    navigator.clipboard.writeText(liveKey)
-    toast.success('API key copied')
-  }
-
-  const regenerate = async () => {
-    setRegenerating(true)
-    try {
-      const { data } = await axiosInstance.post('/api/v1/profile/api-key')
-      setLiveKey(data.data.apiKey)
-      setMasked(false)
-      toast.success('New API key generated — copy it now, it won\'t be shown again')
-    } catch {
-      toast.error('Failed to regenerate API key')
-    } finally {
-      setRegenerating(false)
-    }
-  }
-
-  const saveWebhook = async () => {
-    setSavingWebhook(true)
-    try {
-      await axiosInstance.put('/api/v1/profile/webhook', { webhookUrl, webhookEvents: [...selectedEvents] })
-      toast.success('Webhook settings saved')
-    } catch {
-      toast.error('Failed to save webhook settings')
-    } finally {
-      setSavingWebhook(false)
-    }
-  }
-
-  const toggleEvent = id =>
-    setSelectedEvents(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
-
-  const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-
-  return (
-    <div className="space-y-4">
-      <SectionCard title="API Key" description="Authenticate server-to-server requests to SarnConnect" delay={0}>
-        {liveKey ? (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg font-mono text-xs text-gray-700 overflow-hidden">
-              <Key size={13} className="text-gray-400 shrink-0" />
-              <span className="flex-1 truncate">{displayKey}</span>
-            </div>
-            <button onClick={() => setMasked(v => !v)} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500" title={masked ? 'Show' : 'Hide'}>
-              {masked ? <Eye size={14} /> : <EyeOff size={14} />}
-            </button>
-            <button onClick={copyKey} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500" title="Copy">
-              <Copy size={14} />
-            </button>
-          </div>
-        ) : (
-          <div className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-500 font-mono">
-            No active API key — click Regenerate to create one
-          </div>
-        )}
-
-        <div className="flex items-center gap-3">
-          <Button variant="secondary" size="sm" loading={regenerating} icon={<RefreshCw size={13} />} onClick={regenerate}>
-            {liveKey ? 'Regenerate Key' : 'Generate Key'}
-          </Button>
-          {liveKey && <p className="text-xs text-amber-600">Save this key now — it won't be shown again after you leave.</p>}
-        </div>
-
-        <div className="px-3 py-2.5 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700">
-          <strong>Base URL:</strong>{' '}
-          <span className="font-mono">{apiBaseUrl}/api/v1</span>
-          <br />
-          Include header: <span className="font-mono">Authorization: Bearer YOUR_API_KEY</span>
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Webhook Configuration" description="Receive real-time event notifications at your server" delay={0.04}>
-        <Input
-          label="Webhook URL"
-          value={webhookUrl}
-          onChange={e => setWebhookUrl(e.target.value)}
-          placeholder="https://yourserver.com/webhook/sarnconnect"
-          icon={<Globe size={14} />}
-          hint="Must be a publicly accessible HTTPS endpoint"
-        />
-
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-gray-700">Subscribe to Events</label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {WEBHOOK_EVENTS.map(ev => (
-              <label
-                key={ev.id}
-                className={clsx(
-                  'flex items-center gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors text-sm',
-                  selectedEvents.has(ev.id)
-                    ? 'bg-green-50 border-green-200 text-green-800'
-                    : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100'
-                )}
-              >
-                <div className={clsx('w-4 h-4 rounded border flex items-center justify-center shrink-0', selectedEvents.has(ev.id) ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white')}>
-                  {selectedEvents.has(ev.id) && <Check size={10} className="text-white" strokeWidth={3} />}
-                </div>
-                <input type="checkbox" className="hidden" checked={selectedEvents.has(ev.id)} readOnly />
-                <span className="font-mono text-xs">{ev.id}</span>
-                <span className="text-xs text-gray-400 ml-auto">{ev.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex justify-end">
-          <Button size="sm" loading={savingWebhook} icon={<Webhook size={13} />} onClick={saveWebhook}>
-            Save Webhook
-          </Button>
-        </div>
-      </SectionCard>
-    </div>
-  )
-}
-
 /* ───────── TAB: DANGER ZONE ───────── */
 function DangerTab() {
   const { logout } = useAuthStore()
@@ -725,7 +578,6 @@ export default function Settings() {
     account:       <AccountTab />,
     notifications: <NotificationsTab initialNotifs={initialNotifs} />,
     whatsapp:      <WhatsAppTab initialWASettings={profile?.waSettings} whatsapp={profile?.tenant?.whatsapp} onWhatsAppChange={fetchProfile} />,
-    api:           <APITab initialWebhookUrl={profile?.webhookUrl} initialWebhookEvents={profile?.webhookEvents} />,
     danger:        <DangerTab />,
   }
 

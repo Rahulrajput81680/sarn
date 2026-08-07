@@ -171,6 +171,9 @@ const importContacts = asyncHandler(async (req, res) => {
     skipped: rows.length - added,
     skippedInvalid,
     skippedLimitReached: validRows.length < rows.length - skippedInvalid ? rows.length - skippedInvalid - validRows.length : 0,
+    // Every valid phone in the CSV, not just newly-created ones — lets a caller (e.g. bulk
+    // messaging) target exactly this uploaded list regardless of who was already a contact.
+    phones: [...new Set(validRows.map(r => r.phone))],
   }, `${added} contacts imported`)
 })
 

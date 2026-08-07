@@ -186,72 +186,189 @@ function StepTemplate({ selected, onSelect, onNext, varMapping, onVarMapping, te
   )
 }
 
+/* ─── Contact picker (for Manual tab) ───────────────────── */
+
+function ContactPickerModal({ onClose, onConfirm, alreadyAdded }) {
+  const [contacts, setContacts] = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [search,   setSearch]   = useState('')
+  const [selected, setSelected] = useState(new Set())
+
+  useEffect(() => {
+    api.get('/api/v1/contacts?limit=500')
+      .then(({ data }) => setContacts(data.data?.contacts || []))
+      .catch(() => toast.error('Failed to load contacts'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filtered = contacts.filter((c) => {
+    if (alreadyAdded.has(c.phone)) return false
+    const q = search.toLowerCase()
+    return !q || c.name?.toLowerCase().includes(q) || c.phone?.includes(search)
+  })
+
+  const toggle = (phone) => {
+    setSelected((s) => {
+      const next = new Set(s)
+      next.has(phone) ? next.delete(phone) : next.add(phone)
+      return next
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 8 }}
+        transition={{ duration: 0.18, ease: EASE_OUT }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col"
+        style={{ maxHeight: '80vh' }}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <p className="text-sm font-semibold text-gray-900">Select Contacts</p>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+        </div>
+        <div className="px-5 pt-3 pb-2">
+          <input
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or phone…"
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto px-3 pb-3">
+          {loading ? (
+            <p className="text-center text-xs text-gray-400 py-8">Loading contacts…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-center text-xs text-gray-400 py-8">No contacts found</p>
+          ) : (
+            filtered.map((c) => (
+              <button
+                key={c._id}
+                onClick={() => toggle(c.phone)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${selected.has(c.phone) ? 'bg-green-50' : 'hover:bg-gray-50'}`}
+              >
+                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${selected.has(c.phone) ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}>
+                  {selected.has(c.phone) && <Check size={12} className="text-white" />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{c.name}</p>
+                  <p className="text-xs text-gray-400 font-mono truncate">{c.phone}</p>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-2 px-5 py-3.5 border-t border-gray-100">
+          <span className="text-xs text-gray-500">{selected.size} selected</span>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+            <button
+              onClick={() => onConfirm([...selected])}
+              disabled={selected.size === 0}
+              className="px-4 py-2 bg-green-100 text-gray-800 border-2 border-green-400 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Add{selected.size > 0 ? ` ${selected.size}` : ''}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
 /* ─── Step 2: Recipients ────────────────────────────────── */
 
 function StepRecipients({ data, onChange, onNext, onBack, segments }) {
   const [tab, setTab] = useState(data.tab || 'upload')
   const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState(data.file || null)
+  const [csvPhones, setCsvPhones] = useState(data.tab === 'upload' ? data.phones || null : null)
+  const [csvUploading, setCsvUploading] = useState(false)
   const [manual, setManual] = useState(data.manual || '')
   const [segment, setSegment] = useState(data.segment || '')
-  const [validated, setValidated] = useState(data.validated || false)
-  const [validResult, setValidResult] = useState(data.validResult || null)
+  const [showPicker, setShowPicker] = useState(false)
   const fileRef = useRef()
+
+  // Live, no button needed — recomputed on every keystroke.
+  const manualResult = (() => {
+    const lines = manual.split('\n').map(l => l.trim()).filter(Boolean)
+    const seen = new Set()
+    const result = { valid: 0, duplicates: 0, invalid: 0, total: lines.length, phones: [] }
+    lines.forEach(raw => {
+      const cleaned = raw.replace(/[\s\-().]/g, '')
+      const phone = cleaned.startsWith('+') ? cleaned : `+${cleaned}`
+      if (!/^\+\d{7,15}$/.test(phone)) result.invalid++
+      else if (seen.has(phone)) result.duplicates++
+      else { seen.add(phone); result.valid++; result.phones.push(phone) }
+    })
+    return result
+  })()
+
+  const segmentCount = (() => {
+    const match = segment.match(/\((\d[\d,]*)\)/)
+    return match ? parseInt(match[1].replace(/,/g, '')) : 0
+  })()
+
+  // Upload immediately on file select — reuses the same CSV parser as Contacts import
+  // (handles quoting/columns robustly) instead of a hand-rolled client-side parser, and gives
+  // a real recipient count right away instead of deferring validation to send time.
+  const uploadCsv = async (f) => {
+    setFile(f)
+    setCsvPhones(null)
+    setCsvUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', f)
+      const { data: res } = await api.post('/api/v1/contacts/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      const phones = res.data?.phones || []
+      setCsvPhones(phones)
+      if (!phones.length) toast.error('No valid phone numbers found in that file')
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to parse CSV')
+      setCsvPhones([])
+    } finally {
+      setCsvUploading(false)
+    }
+  }
 
   const handleDrop = (e) => {
     e.preventDefault()
     setDragging(false)
     const f = e.dataTransfer.files[0]
-    if (f) { setFile(f); setValidated(false); setValidResult(null) }
+    if (f) uploadCsv(f)
   }
 
   const handleFile = (e) => {
     const f = e.target.files[0]
-    if (f) { setFile(f); setValidated(false); setValidResult(null) }
+    if (f) uploadCsv(f)
   }
 
-  // ── Real validation — no fake numbers ────────────────────
-  const validate = () => {
-    let result = { valid: 0, duplicates: 0, invalid: 0, total: 0, phones: [] }
+  const addFromContacts = (phones) => {
+    const existingLines = manual.split('\n').map(l => l.trim()).filter(Boolean)
+    setManual([...existingLines, ...phones].join('\n'))
+    setShowPicker(false)
+  }
 
-    if (tab === 'manual') {
-      const lines = manual.split('\n').map(l => l.trim()).filter(Boolean)
-      const seen = new Set()
-      lines.forEach(raw => {
-        const cleaned = raw.replace(/[\s\-().]/g, '')
-        const phone = cleaned.startsWith('+') ? cleaned : `+${cleaned}`
-        const isValid = /^\+\d{7,15}$/.test(phone)
-        if (!isValid) {
-          result.invalid++
-        } else if (seen.has(phone)) {
-          result.duplicates++
-        } else {
-          seen.add(phone)
-          result.valid++
-          result.phones.push(phone)
-        }
-      })
-      result.total = lines.length
+  const canContinue =
+    (tab === 'upload'  && !csvUploading && csvPhones?.length > 0) ||
+    (tab === 'manual'  && manualResult.valid > 0) ||
+    (tab === 'segment' && !!segment)
 
-    } else if (tab === 'segment') {
-      const match = segment.match(/\((\d[\d,]*)\)/)
-      const count = match ? parseInt(match[1].replace(/,/g, '')) : 0
-      result.valid = count
-      result.total = count
-
-    } else if (tab === 'upload') {
-      result.valid = 0
-      result.total = 0
+  const handleContinue = () => {
+    if (tab === 'upload') {
+      onChange({ ...data, tab, file, phones: csvPhones, count: csvPhones.length })
+    } else if (tab === 'manual') {
+      onChange({ ...data, tab, manual, phones: manualResult.phones, count: manualResult.valid })
+    } else {
+      onChange({ ...data, tab, segment, count: segmentCount })
     }
-
-    setValidResult(result)
-    setValidated(true)
-    onChange({ ...data, file, manual, segment, tab, validated: true, count: result.valid, phones: result.phones, validResult: result })
+    onNext()
   }
-
-  const hasInput = (tab === 'manual' && manual.trim()) ||
-                   (tab === 'segment' && segment) ||
-                   (tab === 'upload' && file)
 
   return (
     <div>
@@ -262,7 +379,7 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
         {[['upload', 'CSV / Excel'], ['manual', 'Manual'], ['segment', 'Segment']].map(([key, label]) => (
           <button
             key={key}
-            onClick={() => { setTab(key); setValidated(false); setValidResult(null) }}
+            onClick={() => setTab(key)}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-150 ${
               tab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}
@@ -291,23 +408,43 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
               }`}
             >
               <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFile} />
-              <Upload size={24} className={`mx-auto mb-2 ${dragging ? 'text-green-500' : 'text-gray-300'}`} />
-              {file ? (
+              {csvUploading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Loader2 size={16} className="animate-spin text-gray-400" />
+                  <p className="text-sm text-gray-500">Parsing {file?.name}…</p>
+                </div>
+              ) : file ? (
                 <div className="flex items-center justify-center gap-2">
                   <FileText size={14} className="text-green-600" />
                   <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                  <button onClick={(e) => { e.stopPropagation(); setFile(null); setValidated(false); setValidResult(null) }}>
+                  <button onClick={(e) => { e.stopPropagation(); setFile(null); setCsvPhones(null) }}>
                     <X size={13} className="text-gray-400 hover:text-gray-600" />
                   </button>
                 </div>
               ) : (
                 <>
+                  <Upload size={24} className={`mx-auto mb-2 ${dragging ? 'text-green-500' : 'text-gray-300'}`} />
                   <p className="text-sm text-gray-500">Drop CSV or Excel file here</p>
                   <p className="text-xs text-gray-400 mt-1">or click to browse</p>
                 </>
               )}
             </div>
             <p className="text-xs text-gray-400 mt-2">Required columns: phone. Optional: name, order_id, custom fields</p>
+
+            {csvPhones && !csvUploading && (
+              <div className="mt-4 p-4 bg-white rounded-xl border border-gray-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500 flex items-center gap-1.5">
+                    {csvPhones.length > 0
+                      ? <Check size={13} className="text-green-600" />
+                      : <AlertTriangle size={13} className="text-red-500" />
+                    }
+                    Valid recipients found
+                  </span>
+                  <span className={`text-sm font-bold ${csvPhones.length > 0 ? 'text-gray-900' : 'text-red-500'}`}>{csvPhones.length.toLocaleString()}</span>
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
 
@@ -319,14 +456,40 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
             exit={{ opacity: 0, x: -16 }}
             transition={{ duration: 0.18, ease: EASE_OUT }}
           >
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-xs text-gray-400">One phone number per line, with country code (e.g. +91...)</p>
+              <button
+                onClick={() => setShowPicker(true)}
+                className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 shrink-0"
+              >
+                <Users size={12} /> Choose from contacts
+              </button>
+            </div>
             <textarea
               value={manual}
-              onChange={(e) => { setManual(e.target.value); setValidated(false); setValidResult(null) }}
+              onChange={(e) => setManual(e.target.value)}
               placeholder={`+91 98765 43210\n+91 87654 32109\n+91 76543 21098`}
               rows={6}
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 font-mono resize-none"
             />
-            <p className="text-xs text-gray-400 mt-1">One phone number per line, with country code (e.g. +91...)</p>
+
+            {manual.trim() && (
+              <div className="mt-3 p-3.5 bg-white rounded-xl border border-gray-100 space-y-1.5">
+                {[
+                  { label: 'Valid recipients',    value: manualResult.valid,      icon: Check,         color: 'text-green-600', bg: 'bg-green-50' },
+                  ...(manualResult.duplicates > 0 ? [{ label: 'Duplicates removed', value: manualResult.duplicates, icon: X, color: 'text-amber-600', bg: 'bg-amber-50' }] : []),
+                  ...(manualResult.invalid > 0    ? [{ label: 'Invalid numbers',    value: manualResult.invalid,    icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-50' }] : []),
+                ].map(({ label, value, icon: Icon, color, bg }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`p-1 rounded-md ${bg}`}><Icon size={11} className={color} /></span>
+                      <span className="text-xs text-gray-600">{label}</span>
+                    </div>
+                    <span className={`text-xs font-semibold ${color}`}>{value.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
 
@@ -342,7 +505,7 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
             {(segments || []).map((seg) => (
               <button
                 key={seg}
-                onClick={() => { setSegment(seg); setValidated(false); setValidResult(null) }}
+                onClick={() => setSegment(seg)}
                 className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-colors duration-150 ${
                   segment === seg
                     ? 'border-green-500 bg-green-50 text-green-800 font-medium'
@@ -356,59 +519,22 @@ function StepRecipients({ data, onChange, onNext, onBack, segments }) {
         )}
       </AnimatePresence>
 
-      {/* Real Validation Result */}
-      <AnimatePresence>
-        {validated && validResult && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.22, ease: EASE_OUT }}
-            className="mt-4 p-4 bg-white rounded-xl border border-gray-100 overflow-hidden"
-          >
-            <p className="text-xs font-semibold text-gray-700 mb-3">Audience Validation</p>
-            {tab === 'upload' ? (
-              <p className="text-xs text-gray-500">CSV will be validated on the server when you send.</p>
-            ) : (
-              <div className="space-y-2">
-                {[
-                  { label: 'Valid recipients',  value: validResult.valid,      icon: Check,         color: 'text-green-600', bg: 'bg-green-50' },
-                  ...(validResult.duplicates > 0 ? [{ label: 'Duplicates removed', value: validResult.duplicates, icon: X, color: 'text-amber-600', bg: 'bg-amber-50' }] : []),
-                  ...(validResult.invalid > 0    ? [{ label: 'Invalid numbers',    value: validResult.invalid,    icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-50' }] : []),
-                ].map(({ label, value, icon: Icon, color, bg }) => (
-                  <div key={label} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`p-1 rounded-md ${bg}`}>
-                        <Icon size={11} className={color} />
-                      </span>
-                      <span className="text-xs text-gray-600">{label}</span>
-                    </div>
-                    <span className={`text-xs font-semibold ${color}`}>{value.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between">
-              <span className="text-xs text-gray-500">Final recipient count</span>
-              <span className="text-sm font-bold text-gray-900">{validResult.valid.toLocaleString()}</span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="mt-5 flex justify-between">
         <StepBtn onClick={onBack} variant="secondary"><ChevronLeft size={15} /> Back</StepBtn>
-        <div className="flex gap-2">
-          {!validated && hasInput && (
-            <StepBtn onClick={validate} variant="secondary">
-              Validate Audience
-            </StepBtn>
-          )}
-          <StepBtn onClick={onNext} disabled={!validated || (validResult && validResult.valid === 0)}>
-            Continue <ChevronRight size={15} />
-          </StepBtn>
-        </div>
+        <StepBtn onClick={handleContinue} disabled={!canContinue}>
+          Continue <ChevronRight size={15} />
+        </StepBtn>
       </div>
+
+      <AnimatePresence>
+        {showPicker && (
+          <ContactPickerModal
+            alreadyAdded={new Set(manual.split('\n').map(l => l.trim()).filter(Boolean))}
+            onClose={() => setShowPicker(false)}
+            onConfirm={addFromContacts}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -695,9 +821,16 @@ export default function BulkMessaging() {
       ? `${template.name}_${new Date().toISOString().split('T')[0]}`
       : `campaign_${Date.now()}`
 
-    const recipientsPayload = recipients.segment && !recipients.segment.startsWith('All')
-      ? { type: 'segment', tags: [recipients.segment] }
-      : { type: 'all' }
+    // 'upload' covers both the Manual and CSV/Excel tabs — both resolve to a plain phone list
+    // (see StepRecipients), matching the backend's recipients.type: 'upload' + phones[] shape.
+    const recipientsPayload =
+      recipients.tab === 'upload'  ? { type: 'upload', phones: recipients.phones || [] } :
+      recipients.tab === 'segment' && recipients.segment && !recipients.segment.startsWith('All')
+        ? { type: 'segment', tags: [recipients.segment] } :
+      { type: 'all' }
+
+    const isScheduled = schedule.sendType === 'scheduled' && schedule.schedule
+    let wasScheduled = false
 
     try {
       const { data: cData } = await api.post('/api/v1/campaigns', {
@@ -706,13 +839,19 @@ export default function BulkMessaging() {
         objective: 'promotion',
         recipients: recipientsPayload,
         variables: varMapping,
-        schedule: schedule.sendType === 'scheduled' && schedule.schedule ? { scheduledAt: schedule.schedule } : undefined,
+        schedule: isScheduled ? { sendAt: schedule.schedule } : undefined,
       })
       const campaignId = cData.data.campaign._id
       const { data: sData } = await api.post(`/api/v1/campaigns/${campaignId}/send`)
-      setSentCount(sData.data.campaign?.total || 0)
 
-      // Immediate refresh to show "Sending" in table
+      wasScheduled = sData.data.campaign?.status === 'scheduled'
+      if (wasScheduled) {
+        toast.success(`Campaign scheduled for ${new Date(sData.data.campaign.sendAt).toLocaleString()}`)
+      } else {
+        setSentCount(sData.data.campaign?.total || 0)
+      }
+
+      // Immediate refresh to show "Sending"/"Scheduled" in table
       refreshCampaignList()
       // Poll again at 2s and 5s — catches "completed" after background send finishes
       setTimeout(refreshCampaignList, 2000)
@@ -732,7 +871,9 @@ export default function BulkMessaging() {
       setSending(false)
     }
 
-    setSent(true)
+    // The scheduled case already got its own toast above — the persistent "Campaign queued"
+    // banner below is for the instant-send case only, to avoid showing both at once.
+    if (!wasScheduled) setSent(true)
     setComposing(false)
     reset()
   }
