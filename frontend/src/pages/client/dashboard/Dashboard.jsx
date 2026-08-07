@@ -159,10 +159,10 @@ export default function Dashboard() {
         <SimpleKPI index={2} loading={loading} title="Replies Received"      value={(stats?.totalReplies ?? 0).toLocaleString()}  delta="all time"    deltaType="positive" icon={MessageSquare} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <DeliveryCard index={3} stats={delivery} loading={loading} />
         <SimpleKPI index={4} loading={loading} title="Approved Templates" value={(stats?.activeFlows ?? 0).toLocaleString()} delta="ready to use" deltaType="positive" icon={Bot} />
-        <UsageCard index={5} limits={stats?.limits} usage={stats?.usage} plan={stats?.plan} />
+        {/* <UsageCard index={5} limits={stats?.limits} usage={stats?.usage} plan={stats?.plan} /> */}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -173,7 +173,7 @@ export default function Dashboard() {
             title="Messages Sent (Last 30 Days)"
           />
         </div>
-        <PieChart data={LEAD_SOURCE} title="Lead Sources" />
+        {/* <PieChart data={LEAD_SOURCE} title="Lead Sources" /> */}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

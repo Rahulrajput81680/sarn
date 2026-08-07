@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, CheckCheck, Check, Send, StickyNote,
   Lock, Paperclip, Zap, ChevronRight, User,
-  Tag, UserPlus, CheckCircle2, RefreshCw, X,
-  FileText, MoreVertical, Phone, Circle,
-  Smile, AtSign, ChevronDown, Clock, AlertTriangle,
+  Tag, CheckCircle2, RefreshCw, X,
+  FileText, MoreVertical, Phone,
+  Smile, AtSign, Clock, AlertTriangle,
   LayoutTemplate, ArrowLeft, Plus, MessageSquarePlus,
   ChevronLeft, Image, Video, Music, Download, Info,
 } from 'lucide-react'
@@ -67,8 +67,7 @@ function LabelChip({ labelKey }) {
 
 /* ─── Conversation list item ─────────────────────────────── */
 
-function ConvItem({ c, active, onClick, team }) {
-  const assignee = team.find((t) => t.id === c.assignee)
+function ConvItem({ c, active, onClick }) {
   return (
     <motion.button
       whileTap={{ scale: 0.985 }}
@@ -110,11 +109,6 @@ function ConvItem({ c, active, onClick, team }) {
             {c.window?.open && (
               <span className="flex items-center gap-0.5 text-[10px] font-medium text-green-600 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full">
                 <Clock size={8} /> {fmtCountdown(c.window.expiresAt)} left
-              </span>
-            )}
-            {assignee && (
-              <span className={`ml-auto w-5 h-5 ${assignee.color} rounded-full text-white text-xs font-bold flex items-center justify-center`}>
-                {assignee.initials[0]}
               </span>
             )}
           </div>
@@ -287,43 +281,6 @@ function QuickReplies({ onSelect, onClose }) {
   )
 }
 
-/* ─── Assign dropdown ────────────────────────────────────── */
-
-function AssignDropdown({ current, onAssign, onClose, team }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95, y: -4 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95, y: -4 }}
-      transition={{ duration: 0.15, ease: EASE_OUT }}
-      className="absolute top-full right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 min-w-[176px] z-30"
-    >
-      <button
-        onClick={() => { onAssign(null); onClose() }}
-        className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${!current ? 'text-green-600 font-medium' : 'text-gray-700'}`}
-      >
-        <Circle size={13} className="text-gray-300" /> Unassigned
-      </button>
-      {team.map((m) => (
-        <button
-          key={m.id}
-          onClick={() => { onAssign(m.id); onClose() }}
-          className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${current === m.id ? 'text-green-600 font-medium' : 'text-gray-700'}`}
-        >
-          <span className={`w-5 h-5 ${m.color} rounded-full text-white text-xs font-bold flex items-center justify-center shrink-0`}>
-            {m.initials[0]}
-          </span>
-          {m.name}
-          {current === m.id && <Check size={12} className="ml-auto text-green-600" />}
-        </button>
-      ))}
-      {team.length === 0 && (
-        <p className="px-3 py-2 text-xs text-gray-400 text-center">No team members found</p>
-      )}
-    </motion.div>
-  )
-}
-
 /* ─── Label picker ───────────────────────────────────────── */
 
 function LabelPicker({ active, onToggle, onClose }) {
@@ -351,9 +308,7 @@ function LabelPicker({ active, onToggle, onClose }) {
 
 /* ─── Profile panel ─────────────────────────────────────── */
 
-function ProfilePanel({ conv, assignee, onAssign, onToggleLabel, team }) {
-  const [tab, setTab] = useState('info')
-  const [showAssign, setShowAssign] = useState(false)
+function ProfilePanel({ conv, onToggleLabel }) {
   const [showLabels, setShowLabels] = useState(false)
 
   return (
@@ -367,104 +322,48 @@ function ProfilePanel({ conv, assignee, onAssign, onToggleLabel, team }) {
         <p className="text-xs text-gray-400 mt-0.5">{conv.phone}</p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-100 text-xs font-medium">
-        {['info', 'attachments'].map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex-1 py-2.5 capitalize transition-colors ${tab === t ? 'text-green-600 border-b-2 border-green-500' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            {t === 'info' ? 'Profile' : 'Files'}
-          </button>
-        ))}
-      </div>
-
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {tab === 'info' && (
-          <>
-            {/* Assign */}
-            <div className="relative">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Assigned To</p>
-              <button
-                onClick={() => setShowAssign((o) => !o)}
-                className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors text-sm"
-              >
-                {assignee
-                  ? <>
-                      <span className={`w-5 h-5 ${assignee.color} rounded-full text-white text-xs font-bold flex items-center justify-center shrink-0`}>{assignee.initials[0]}</span>
-                      <span className="flex-1 text-left text-gray-800 text-xs">{assignee.name}</span>
-                    </>
-                  : <>
-                      <UserPlus size={13} className="text-gray-400" />
-                      <span className="flex-1 text-left text-gray-400 text-xs">Unassigned</span>
-                    </>
-                }
-                <ChevronDown size={12} className="text-gray-300" />
-              </button>
-              <AnimatePresence>
-                {showAssign && (
-                  <>
-                    <div className="fixed inset-0 z-20" onClick={() => setShowAssign(false)} />
-                    <AssignDropdown current={conv.assignee} onAssign={onAssign} onClose={() => setShowAssign(false)} team={team} />
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Labels */}
-            <div className="relative">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Labels</p>
-              <div className="flex flex-wrap gap-1 mb-2">
-                {conv.labels.map((l) => <LabelChip key={l} labelKey={l} />)}
-                {conv.labels.length === 0 && <span className="text-xs text-gray-300">No labels</span>}
-              </div>
-              <div className="relative">
-                <button
-                  onClick={() => setShowLabels((o) => !o)}
-                  className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 font-medium"
-                >
-                  <Tag size={11} /> Manage labels
-                </button>
-                <AnimatePresence>
-                  {showLabels && (
-                    <>
-                      <div className="fixed inset-0 z-20" onClick={() => setShowLabels(false)} />
-                      <LabelPicker active={conv.labels} onToggle={onToggleLabel} onClose={() => setShowLabels(false)} />
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-
-            {/* Details */}
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Details</p>
-              <div className="space-y-2">
-                {[
-                  { label: 'Status', value: conv.status === 'resolved' ? 'Resolved' : 'Open' },
-                  { label: 'Channel', value: 'WhatsApp' },
-                  { label: 'First contact', value: '2 days ago' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between text-xs">
-                    <span className="text-gray-400">{label}</span>
-                    <span className="font-medium text-gray-700">{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
-        {tab === 'attachments' && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Shared Files</p>
-            <div className="flex flex-col items-center justify-center py-6 text-gray-300">
-              <FileText size={24} className="mb-2" />
-              <p className="text-xs">No files shared yet</p>
-            </div>
+        {/* Labels */}
+        <div className="relative">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Labels</p>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {conv.labels.map((l) => <LabelChip key={l} labelKey={l} />)}
+            {conv.labels.length === 0 && <span className="text-xs text-gray-300">No labels</span>}
           </div>
-        )}
+          <div className="relative">
+            <button
+              onClick={() => setShowLabels((o) => !o)}
+              className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 font-medium"
+            >
+              <Tag size={11} /> Manage labels
+            </button>
+            <AnimatePresence>
+              {showLabels && (
+                <>
+                  <div className="fixed inset-0 z-20" onClick={() => setShowLabels(false)} />
+                  <LabelPicker active={conv.labels} onToggle={onToggleLabel} onClose={() => setShowLabels(false)} />
+                </>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Details */}
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Details</p>
+          <div className="space-y-2">
+            {[
+              { label: 'Status', value: conv.status === 'resolved' ? 'Resolved' : 'Open' },
+              { label: 'Channel', value: 'WhatsApp' },
+              { label: 'First contact', value: '2 days ago' },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex justify-between text-xs">
+                <span className="text-gray-400">{label}</span>
+                <span className="font-medium text-gray-700">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -506,7 +405,6 @@ const normalizeConv = (c) => ({
   color: colorFor(c.contact?.name),
   status: c.status,
   unread: c.unreadCount || 0,
-  assignee: c.assignee?._id || c.assignee || null,
   labels: c.labels || [],
   lastMsg: c.lastMessage?.text || '',
   time: fmtTime(c.updatedAt),
@@ -817,7 +715,6 @@ export default function Inbox() {
   const [replyMode,   setReplyMode]   = useState('reply')
   const [showCanned,  setShowCanned]  = useState(false)
   const [showProfile, setShowProfile] = useState(true)
-  const [showAssignHeader, setShowAssignHeader] = useState(false)
   const [showLabelHeader,  setShowLabelHeader]  = useState(false)
   const [loading,     setLoading]     = useState(true)
   const [sending,     setSending]     = useState(false)
@@ -831,7 +728,6 @@ export default function Inbox() {
 
   const conv     = convs.find((c) => c.id === activeId)
   const msgs     = messages[activeId] || []
-  const assignee = team.find((t) => t.id === conv?.assignee)
 
   // Re-render every 30s so the 24h window countdown ("closes in Xh Ym") ticks
   // down in real time instead of freezing at whatever it read on last fetch.
@@ -942,7 +838,6 @@ export default function Inbox() {
   const filteredConvs = convs.filter((c) => {
     if (search && !c.name.toLowerCase().includes(search.toLowerCase())) return false
     if (filterTab === 'unread')   return c.unread > 0
-    if (filterTab === 'assigned') return !!c.assignee
     if (filterTab === 'resolved') return c.status === 'resolved'
     return true
   })
@@ -1005,13 +900,6 @@ export default function Inbox() {
     } catch {}
   }
 
-  const handleAssign = async (memberId) => {
-    setConvs(cs => cs.map(c => c.id === activeId ? { ...c, assignee: memberId } : c))
-    try {
-      await axiosInstance.patch(`/api/v1/conversations/${activeId}`, { assignee: memberId })
-    } catch {}
-  }
-
   const handleToggleLabel = async (labelKey) => {
     const conv = convs.find(c => c.id === activeId)
     if (!conv) return
@@ -1024,7 +912,7 @@ export default function Inbox() {
     } catch {}
   }
 
-  const FILTER_TABS = ['all', 'unread', 'assigned', 'resolved']
+  const FILTER_TABS = ['all', 'unread', 'resolved']
 
   return (
     <div
@@ -1093,7 +981,6 @@ export default function Inbox() {
               <ConvItem
                 c={c}
                 active={c.id === activeId}
-                team={team}
                 onClick={() => {
                   setActiveId(c.id)
                   setShowList(false)
@@ -1133,27 +1020,6 @@ export default function Inbox() {
 
               {/* Actions */}
               <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
-                {/* Assign */}
-                <div className="relative">
-                  <motion.button
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => { setShowAssignHeader((o) => !o); setShowLabelHeader(false) }}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 bg-white transition-colors"
-                    style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
-                  >
-                    <UserPlus size={12} />
-                    {assignee ? assignee.name.split(' ')[0] : 'Assign'}
-                  </motion.button>
-                  <AnimatePresence>
-                    {showAssignHeader && (
-                      <>
-                        <div className="fixed inset-0 z-20" onClick={() => setShowAssignHeader(false)} />
-                        <AssignDropdown current={conv.assignee} onAssign={handleAssign} onClose={() => setShowAssignHeader(false)} team={team} />
-                      </>
-                    )}
-                  </AnimatePresence>
-                </div>
-
                 {/* Labels */}
                 <div className="relative">
                   <motion.button
@@ -1381,10 +1247,7 @@ export default function Inbox() {
             >
               <ProfilePanel
                 conv={conv}
-                assignee={assignee}
-                onAssign={handleAssign}
                 onToggleLabel={handleToggleLabel}
-                team={team}
               />
             </motion.div>
           )}
@@ -1409,10 +1272,7 @@ export default function Inbox() {
             >
               <ProfilePanel
                 conv={conv}
-                assignee={assignee}
-                onAssign={handleAssign}
                 onToggleLabel={handleToggleLabel}
-                team={team}
               />
             </motion.div>
           </motion.div>
