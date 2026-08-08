@@ -227,6 +227,43 @@ const syncTemplatesFromMeta = asyncHandler(async (req, res) => {
   }, `${synced} approved template(s) synced from Meta`)
 })
 
+// ── reconcileTemplateStatuses ──────────────────────────────────────────────────
+// Self-healing counterpart to the webhook: on a free Render instance, the server sleeps
+// after 15 minutes idle, so any message_template_status_update Meta tries to deliver while
+// asleep is simply lost — there's no queue or retry once the delivery attempt itself fails.
+// Called on every server startup (which is exactly when a Render instance wakes back up),
+// so drift accumulated while asleep gets corrected within moments of the site responding again.
+async function reconcileTemplateStatuses(tenantId) {
+  const allTemplates = await waService.fetchTemplates(tenantId)
+  if (!allTemplates.length) return { checked: 0, corrected: 0 }
+
+  let corrected = 0
+  for (const t of allTemplates) {
+    if (t.status !== 'APPROVED' && t.status !== 'REJECTED') continue
+
+    const local = await Template.findOne({ tenant: tenantId, name: t.name })
+    if (!local || local.status === t.status) continue
+
+    local.status = t.status
+    local.metaTemplateId = t.id
+    if (t.status === 'APPROVED') local.rejectionNote = null
+    await local.save()
+    corrected++
+
+    const owner = await User.findOne({ tenant: tenantId, role: { $in: ['admin', 'agent'] } }).lean()
+    if (owner) {
+      const tenant = await Tenant.findById(tenantId).lean()
+      if (t.status === 'APPROVED') {
+        sendEmail({ to: owner.email, subject: `Template "${t.name}" approved by Meta!`, html: templateApprovedEmail(t.name, tenant?.name || owner.name) }).catch(() => {})
+      } else {
+        sendEmail({ to: owner.email, subject: `Template "${t.name}" was rejected by Meta`, html: templateRejectedEmail(t.name, tenant?.name || owner.name, 'Rejected by Meta during review') }).catch(() => {})
+      }
+    }
+  }
+
+  return { checked: allTemplates.length, corrected }
+}
+
 // ── handleTemplateStatusWebhook ───────────────────────────────────────────────
 // Called by webhook.routes.js when Meta fires a message_template_status_update.
 // Updates the template status in MongoDB automatically — no manual action needed.
@@ -314,5 +351,6 @@ module.exports = {
   submitTemplate,
   submitTemplateToMeta,
   syncTemplatesFromMeta,
+  reconcileTemplateStatuses,
   handleTemplateStatusWebhook,
 }

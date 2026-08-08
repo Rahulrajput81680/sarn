@@ -134,7 +134,9 @@ const connectWhatsApp = asyncHandler(async (req, res) => {
   } catch (err) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid credentials. Check your Access Token, Phone Number ID, and WABA ID and try again.',
+      message: err.code === 'PHONE_WABA_MISMATCH'
+        ? err.message
+        : 'Invalid credentials. Check your Access Token, Phone Number ID, and WABA ID and try again.',
     })
   }
 

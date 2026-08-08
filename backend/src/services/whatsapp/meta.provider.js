@@ -53,13 +53,29 @@ async function getMessageStatus(waMessageId, config) {
 
 // Verifies a token + phoneNumberId + wabaId actually belong together and are usable.
 // Called before saving manually-pasted credentials — never trust client-supplied phone/business name.
+//
+// Checking phoneNumberId and wabaId each exist is NOT enough: a token with read access to
+// multiple WABAs on the same Business Portfolio can successfully look up an unrelated
+// phoneNumberId and wabaId pair even when the phone number isn't actually part of that WABA.
+// That silent mismatch is exactly what breaks template sends later — Meta resolves a template
+// send against the WABA that truly owns the phone number, not whatever wabaId got saved, so
+// "existing" templates start failing with "(#132001) Template name does not exist in the
+// translation" despite fetchTemplates (which lists by wabaId) showing them as approved.
 async function verifyCredentials({ accessToken, phoneNumberId, wabaId }) {
   const client = getClient({ accessToken })
 
-  const [phoneRes, wabaRes] = await Promise.all([
+  const [phoneRes, wabaRes, wabaPhonesRes] = await Promise.all([
     client.get(`/${phoneNumberId}`, { params: { fields: 'verified_name,display_phone_number,quality_rating' } }),
     client.get(`/${wabaId}`, { params: { fields: 'id,name' } }),
+    client.get(`/${wabaId}/phone_numbers`, { params: { fields: 'id' } }),
   ])
+
+  const ownedIds = (wabaPhonesRes.data.data || []).map(p => p.id)
+  if (!ownedIds.includes(String(phoneNumberId))) {
+    const err = new Error(`Phone Number ID ${phoneNumberId} does not belong to WABA ${wabaId} — double-check both IDs in Meta Business Settings.`)
+    err.code = 'PHONE_WABA_MISMATCH'
+    throw err
+  }
 
   return {
     verifiedName:  phoneRes.data.verified_name,

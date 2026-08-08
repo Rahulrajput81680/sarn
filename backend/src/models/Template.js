@@ -1,7 +1,7 @@
 const mongoose = require('mongoose')
 
 const componentSchema = new mongoose.Schema({
-  type:    { type: String, enum: ['HEADER', 'BODY', 'FOOTER', 'BUTTONS'], required: true },
+  type:    { type: String, enum: ['HEADER', 'BODY', 'FOOTER', 'BUTTONS', 'CAROUSEL'], required: true },
   format:  { type: String, default: null },  // Meta HEADER format: TEXT | IMAGE | VIDEO | DOCUMENT
   text:    { type: String, trim: true, maxlength: 1024 },
   variables: { type: [String], default: [] },

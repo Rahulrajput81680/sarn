@@ -20,10 +20,12 @@ const connectDB = require('./src/config/db')
 const { initSocket } = require('./src/config/socket')
 const { sweepTokenExpiry } = require('./src/services/whatsapp/tokenExpirySweep')
 const { sweepScheduledCampaigns } = require('./src/services/scheduledCampaignSweep')
+const { sweepTemplateStatuses } = require('./src/services/templateStatusSweep')
 
 const PORT = process.env.PORT || 5000
 const TOKEN_SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
 const CAMPAIGN_SWEEP_INTERVAL_MS = 60 * 1000 // 1 minute — scheduled sends should start close to on-time
+const TEMPLATE_SWEEP_INTERVAL_MS = 15 * 60 * 1000 // 15 minutes — matches Render free-tier's idle timeout
 
 connectDB().then(() => {
   const server = http.createServer(app)
@@ -43,6 +45,14 @@ connectDB().then(() => {
   // Starts scheduled bulk campaigns once their picked send time arrives.
   sweepScheduledCampaigns()
   setInterval(sweepScheduledCampaigns, CAMPAIGN_SWEEP_INTERVAL_MS)
+
+  // Self-heals template statuses the webhook missed (e.g. Meta tried delivering while a
+  // free-tier Render instance was asleep) — runs immediately on every startup, which is
+  // exactly when a sleeping instance wakes back up.
+  if (process.env.WA_PROVIDER === 'meta') {
+    sweepTemplateStatuses()
+    setInterval(sweepTemplateStatuses, TEMPLATE_SWEEP_INTERVAL_MS)
+  }
 }).catch((err) => {
   console.error('[SarnConnect] Failed to connect to DB:', err.message)
   process.exit(1)
