@@ -81,6 +81,24 @@ async function checkTokenExpiry(tenantId) {
   return { isValid, expiresAt }
 }
 
+async function refreshPhoneNumberDetails(tenantId) {
+  const config = await getTenantWAConfig(tenantId)
+  const details = await provider.getPhoneNumberDetails(config)
+
+  await Tenant.findByIdAndUpdate(tenantId, {
+    'whatsapp.phoneNumber': details.displayPhone,
+    'whatsapp.displayName': details.verifiedName,
+    'whatsapp.qualityRating': details.qualityRating,
+    'whatsapp.phoneStatus': details.phoneStatus,
+    'whatsapp.nameStatus': details.nameStatus,
+    'whatsapp.messagingLimitTier': details.messagingLimitTier,
+    'whatsapp.codeVerificationStatus': details.codeVerificationStatus,
+    'whatsapp.statusLastCheckedAt': new Date(),
+  })
+
+  return details
+}
+
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
@@ -92,4 +110,5 @@ module.exports = {
   getWABAInfo,
   verifyCredentials,
   checkTokenExpiry,
+  refreshPhoneNumberDetails,
 }

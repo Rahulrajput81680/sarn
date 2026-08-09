@@ -10,8 +10,14 @@ const tenantSchema = new mongoose.Schema(
       displayName:   { type: String, trim: true },
       phoneNumberId: { type: String, trim: true },
       wabaId:        { type: String, trim: true },
+      qualityRating: { type: String, trim: true },
+      phoneStatus:   { type: String, trim: true },
+      nameStatus:    { type: String, trim: true },
+      messagingLimitTier: { type: String, trim: true },
+      codeVerificationStatus: { type: String, trim: true },
       accessToken:   { type: String, select: false }, // AES-256 encrypted — never returned by default
       connectedAt:   { type: Date, default: null },
+      statusLastCheckedAt: { type: Date, default: null },
       // null = unknown/never checked, 0 (as Date(0)) is not used — a non-expiring token stores null here
       tokenExpiresAt:      { type: Date, default: null },
       tokenLastCheckedAt:  { type: Date, default: null },

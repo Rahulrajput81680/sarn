@@ -16,12 +16,20 @@ const app = express()
 // Trust proxy — required when running behind Render/ngrok/reverse proxy
 app.set('trust proxy', 1)
 
+const corsOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean)
+
 // Security headers
 app.use(helmet())
 
 // CORS — only allow configured frontend origin
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin(origin, callback) {
+    if (!origin || corsOrigins.includes(origin)) return callback(null, true)
+    return callback(new Error(`CORS blocked for origin: ${origin}`))
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
