@@ -286,6 +286,47 @@ function QuickReplies({ onSelect, onClose }) {
   )
 }
 
+/* ─── Emoji picker ───────────────────────────────────────── */
+
+const EMOJI_LIST = [
+  '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩',
+  '😘','😗','😙','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','😐','😑',
+  '😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮',
+  '🤧','🥵','🥶','😵','🤯','🥳','😎','🤓','🧐','😕','🙁','😮','😯','😲','😳','🥺',
+  '😢','😭','😱','😖','😣','😩','😫','😤','😡','😠','🤬','😈','👻','💀','🤡','👍',
+  '👎','👊','✊','🤞','✌️','🤟','🤘','👌','👈','👉','👆','👇','☝️','✋','🖐️','👋',
+  '🙏','🤝','🙌','👏','💪','❤️','🧡','💛','💚','💙','💜','🖤','🤍','💔','💕','💯',
+  '🔥','✨','🎉','🎊','🎁','🏆','⭐','✅','❌','❓','❗','💬','📌','📍','📞','⏰',
+]
+
+function EmojiPicker({ onSelect, onClose }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 8, scale: 0.97 }}
+      transition={{ duration: 0.18, ease: EASE_OUT }}
+      className="absolute bottom-full left-0 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg z-30 w-64 max-w-[90vw]"
+    >
+      <div className="px-3 py-2 border-b border-gray-100">
+        <span className="text-xs font-semibold text-gray-500">Emoji</span>
+      </div>
+      <div className="max-h-48 overflow-y-auto p-2 grid grid-cols-8 gap-0.5">
+        {EMOJI_LIST.map((emoji, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onSelect(emoji)}
+            className="w-7 h-7 flex items-center justify-center text-lg rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </motion.div>
+  )
+}
+
 /* ─── Label picker ───────────────────────────────────────── */
 
 function LabelPicker({ active, onToggle, onClose }) {
@@ -721,6 +762,8 @@ export default function Inbox() {
   const [replyText,   setReplyText]   = useState('')
   const [replyMode,   setReplyMode]   = useState('reply')
   const [showCanned,  setShowCanned]  = useState(false)
+  const [showEmoji,   setShowEmoji]   = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [showProfile, setShowProfile] = useState(true)
   const [showLabelHeader,  setShowLabelHeader]  = useState(false)
   const [loading,     setLoading]     = useState(true)
@@ -731,6 +774,7 @@ export default function Inbox() {
   const [sendingMedia, setSendingMedia] = useState(false)
   const msgEndRef  = useRef(null)
   const fileInputRef = useRef(null)
+  const replyTextareaRef = useRef(null)
   const [, setClockTick] = useState(0) // forces re-render so window countdowns stay live
 
   const conv     = convs.find((c) => c.id === activeId)
@@ -912,6 +956,20 @@ export default function Inbox() {
     } finally {
       setSendingMedia(false)
     }
+  }
+
+  const insertEmoji = (emoji) => {
+    const el = replyTextareaRef.current
+    if (!el) { setReplyText(t => t + emoji); return }
+    const start = el.selectionStart ?? replyText.length
+    const end = el.selectionEnd ?? replyText.length
+    const next = replyText.slice(0, start) + emoji + replyText.slice(end)
+    setReplyText(next)
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = start + emoji.length
+      el.setSelectionRange(pos, pos)
+    })
   }
 
   const handleSend = async () => {
@@ -1167,6 +1225,7 @@ export default function Inbox() {
                   )}
                 </AnimatePresence>
                 <textarea
+                  ref={replyTextareaRef}
                   rows={3}
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
@@ -1211,7 +1270,7 @@ export default function Inbox() {
                 <div className="flex items-center gap-1">
                   {!mediaFile && (
                     <button
-                      onClick={() => setShowCanned((s) => !s)}
+                      onClick={() => { setShowCanned((s) => !s); setShowEmoji(false); setShowAttachMenu(false) }}
                       className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors ${showCanned ? 'bg-green-50 border-green-300 text-green-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
                     >
                       <Zap size={11} /> Quick replies
@@ -1224,16 +1283,63 @@ export default function Inbox() {
                     className="hidden"
                     onChange={handleMediaSelect}
                   />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`p-1.5 rounded-lg transition-colors ${mediaFile ? 'text-green-600 bg-green-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
-                    title="Attach file"
-                  >
-                    <Paperclip size={14} />
-                  </button>
-                  <button className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-                    <Smile size={14} />
-                  </button>
+                  {/* Attach: file upload or send a template (available anytime, not just when the 24h window is closed) */}
+                  <div className="relative">
+                    <button
+                      onClick={() => { setShowAttachMenu((s) => !s); setShowEmoji(false); setShowCanned(false) }}
+                      className={`p-1.5 rounded-lg transition-colors ${mediaFile || showAttachMenu ? 'text-green-600 bg-green-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                      title="Attach file or send a template"
+                    >
+                      <Paperclip size={14} />
+                    </button>
+                    <AnimatePresence>
+                      {showAttachMenu && (
+                        <>
+                          <div className="fixed inset-0 z-20" onClick={() => setShowAttachMenu(false)} />
+                          <motion.div
+                            initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.97 }}
+                            transition={{ duration: 0.18, ease: EASE_OUT }}
+                            className="absolute bottom-full left-0 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[190px] z-30"
+                          >
+                            {/* <button
+                              onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false) }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              <Paperclip size={13} className="text-gray-400" /> Attach file
+                            </button> */}
+                            <button
+                              onClick={() => {
+                                setShowNewConv({ _id: conv.contactId, name: conv.name, phone: conv.phone, isOptedIn: true })
+                                setShowAttachMenu(false)
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              <LayoutTemplate size={13} className="text-gray-400" /> Send template
+                            </button>
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  <div className="relative">
+                    <button
+                      onClick={() => { setShowEmoji((s) => !s); setShowCanned(false); setShowAttachMenu(false) }}
+                      className={`p-1.5 rounded-lg transition-colors ${showEmoji ? 'text-green-600 bg-green-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                      title="Emoji"
+                    >
+                      <Smile size={14} />
+                    </button>
+                    <AnimatePresence>
+                      {showEmoji && (
+                        <>
+                          <div className="fixed inset-0 z-20" onClick={() => setShowEmoji(false)} />
+                          <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmoji(false)} />
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
                 {mediaFile ? (
                   <motion.button
