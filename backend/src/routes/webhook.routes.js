@@ -237,17 +237,24 @@ async function handleStatus(status, tenantId) {
   const mapped = statusMap[status.status]
   if (!mapped) return
 
+  // Meta attaches an errors[] array to failed statuses (e.g. recipient not on the allowed
+  // test list, no WhatsApp account, re-engagement outside the 24h window) — without capturing
+  // it, a failed send shows up with no explanation anywhere in the app.
+  const errorDetail = status.errors?.[0]
+    ? `${status.errors[0].title || 'Failed'}${status.errors[0].message ? ' — ' + status.errors[0].message : ''}`
+    : null
+
   try {
     const msg = await Message.findOneAndUpdate(
       { waMessageId: status.id },
-      { status: mapped },
+      { status: mapped, error: mapped === 'failed' ? errorDetail : null },
       { new: true }
     )
 
     if (msg) {
       getIO()
         .to(`conv:${msg.conversation}`)
-        .emit('message_status', { messageId: msg._id, waMessageId: status.id, status: mapped })
+        .emit('message_status', { messageId: msg._id, waMessageId: status.id, status: mapped, error: msg.error })
 
       if (msg.campaign) {
         if (mapped === 'delivered') {
@@ -264,7 +271,7 @@ async function handleStatus(status, tenantId) {
       status: 'success',
       code: 200,
       latencyMs: Date.now() - start,
-      payload: { id: status.id, status: status.status },
+      payload: { id: status.id, status: status.status, errors: status.errors || undefined },
     }).catch(() => {})
   } catch (err) {
     console.error('[Webhook] handleStatus error:', err.message)

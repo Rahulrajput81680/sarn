@@ -227,11 +227,15 @@ function MsgBubble({ msg, team }) {
         )}
         <div className={`flex items-center gap-1 mt-0.5 ${isAgent ? 'justify-end' : 'justify-start'}`}>
           <span className="text-xs text-gray-400">{msg.time}</span>
-          {isAgent && (
-            msg.status === 'read'
-              ? <CheckCheck size={12} className="text-blue-400" />
-              : <CheckCheck size={12} className="text-gray-400" />
+          {isAgent && msg.status === 'failed' && (
+            <span className="flex items-center gap-0.5 text-red-500" title={msg.error || 'Message failed to send'}>
+              <AlertTriangle size={11} />
+              <span className="text-xs font-medium">Failed</span>
+            </span>
           )}
+          {isAgent && msg.status === 'read' && <CheckCheck size={12} className="text-blue-400" />}
+          {isAgent && msg.status === 'delivered' && <CheckCheck size={12} className="text-gray-400" />}
+          {isAgent && (msg.status === 'sent' || msg.status === 'queued') && <Check size={12} className="text-gray-400" />}
         </div>
       </div>
     </motion.div>
@@ -421,6 +425,7 @@ const normalizeMsg = (m) => ({
   mediaType: m.mediaType || null,
   time:      fmtTime(m.timestamp || m.createdAt),
   status:    m.status,
+  error:     m.error || null,
   agent:     m.sentBy?._id || m.sentBy || null,
 })
 
@@ -834,10 +839,28 @@ export default function Inbox() {
       setConvs(cs => cs.map(c => c.id === conversation._id ? { ...c, ...normalizeConv(conversation), labels: conversation.labels || c.labels } : c))
     })
 
+    // Backend emits this on every delivered/read/failed webhook update — without it, a message
+    // that later fails keeps showing its original "sent" checkmark until the chat is reopened.
+    socket.on('message_status', ({ messageId, status, error }) => {
+      setMessages(m => {
+        const next = { ...m }
+        for (const convId of Object.keys(next)) {
+          const idx = next[convId].findIndex(msg => msg.id === messageId)
+          if (idx === -1) continue
+          const updated = [...next[convId]]
+          updated[idx] = { ...updated[idx], status, error: error ?? updated[idx].error }
+          next[convId] = updated
+          break
+        }
+        return next
+      })
+    })
+
     return () => {
       socket.off('new_message')
       socket.off('new_conversation_message')
       socket.off('conversation_updated')
+      socket.off('message_status')
       disconnectSocket()
     }
   }, [token])

@@ -22,6 +22,9 @@ const messageSchema = new mongoose.Schema(
     },
     sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     waMessageId: { type: String, default: null },
+    // Meta's failure reason, e.g. "Re-engagement message" or a not-in-allowed-list error —
+    // captured from the status webhook's `errors[]` so a failed send is diagnosable in the UI.
+    error: { type: String, default: null },
     timestamp: { type: Date, default: Date.now },
   },
   { timestamps: true }
