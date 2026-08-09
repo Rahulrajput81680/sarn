@@ -21,6 +21,23 @@ function formatPhone(phone) {
   return String(phone).replace(/\D/g, '')
 }
 
+const PHONE_DETAIL_FIELDS = 'id,verified_name,display_phone_number,quality_rating,status,name_status,messaging_limit_tier,code_verification_status'
+const BASIC_PHONE_DETAIL_FIELDS = 'id,verified_name,display_phone_number,quality_rating'
+
+async function fetchPhoneDetails(client, phoneNumberId) {
+  try {
+    const { data } = await client.get(`/${phoneNumberId}`, {
+      params: { fields: PHONE_DETAIL_FIELDS },
+    })
+    return data
+  } catch (err) {
+    const { data } = await client.get(`/${phoneNumberId}`, {
+      params: { fields: BASIC_PHONE_DETAIL_FIELDS },
+    })
+    return data
+  }
+}
+
 async function sendTextMessage({ to, text, config }) {
   const { data } = await getClient(config).post(`/${config.phoneNumberId}/messages`, {
     messaging_product: 'whatsapp',
@@ -64,8 +81,8 @@ async function getMessageStatus(waMessageId, config) {
 async function verifyCredentials({ accessToken, phoneNumberId, wabaId }) {
   const client = getClient({ accessToken })
 
-  const [phoneRes, wabaRes, wabaPhonesRes] = await Promise.all([
-    client.get(`/${phoneNumberId}`, { params: { fields: 'verified_name,display_phone_number,quality_rating' } }),
+  const [phone, wabaRes, wabaPhonesRes] = await Promise.all([
+    fetchPhoneDetails(client, phoneNumberId),
     client.get(`/${wabaId}`, { params: { fields: 'id,name' } }),
     client.get(`/${wabaId}/phone_numbers`, { params: { fields: 'id' } }),
   ])
@@ -78,10 +95,29 @@ async function verifyCredentials({ accessToken, phoneNumberId, wabaId }) {
   }
 
   return {
-    verifiedName:  phoneRes.data.verified_name,
-    displayPhone:  phoneRes.data.display_phone_number,
-    qualityRating: phoneRes.data.quality_rating || null,
+    verifiedName:  phone.verified_name,
+    displayPhone:  phone.display_phone_number,
+    qualityRating: phone.quality_rating || null,
+    phoneStatus:   phone.status || null,
+    nameStatus:    phone.name_status || null,
+    messagingLimitTier: phone.messaging_limit_tier || null,
+    codeVerificationStatus: phone.code_verification_status || null,
     wabaName:      wabaRes.data.name,
+  }
+}
+
+async function getPhoneNumberDetails(config) {
+  const data = await fetchPhoneDetails(getClient(config), config.phoneNumberId)
+
+  return {
+    id: data.id,
+    verifiedName: data.verified_name,
+    displayPhone: data.display_phone_number,
+    qualityRating: data.quality_rating || null,
+    phoneStatus: data.status || null,
+    nameStatus: data.name_status || null,
+    messagingLimitTier: data.messaging_limit_tier || null,
+    codeVerificationStatus: data.code_verification_status || null,
   }
 }
 
@@ -188,5 +224,6 @@ module.exports = {
   exchangeCodeForToken,
   getWABAInfo,
   verifyCredentials,
+  getPhoneNumberDetails,
   debugAccessToken,
 }

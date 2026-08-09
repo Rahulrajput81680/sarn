@@ -1,10 +1,23 @@
 import { useEffect, useState } from 'react'
-import { Users, Megaphone, MessageSquare, Bot, TrendingUp } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  Edit3,
+  Megaphone,
+  MessageSquare,
+  ShieldCheck,
+  Smartphone,
+  Star,
+  TrendingUp,
+  Users,
+} from 'lucide-react'
+import { motion } from 'framer-motion'
 import LineChart from '../../../components/charts/LineChart'
 import PieChart from '../../../components/charts/PieChart'
 import PageHeader from '../../../components/layout/PageHeader'
 import Button from '../../../components/ui/Button'
+import Modal from '../../../components/ui/Modal'
 import { useNavigate } from 'react-router-dom'
 import axiosInstance from '../../../api/axios'
 
@@ -117,6 +130,148 @@ function UsageCard({ limits, usage, plan, index }) {
   )
 }
 
+function WhatsAppStatusCard({ status, loading, index }) {
+  const [showIssues, setShowIssues] = useState(false)
+  const isConnected = status?.connectionStatus === 'connected'
+  const displayName = status?.displayName || 'WhatsApp Business'
+  const phoneNumber = status?.phoneNumber || 'Connect your number'
+  const dailyLimit = status?.messagingLimitLabel || 'Unknown'
+  const qualityLabel = status?.qualityLabel || 'Unknown'
+  const messagingLabel = isConnected ? (status?.phoneStatus || 'Unknown') : 'Setup needed'
+  const issueCount = status?.issueCount ?? 0
+  const isVerified = !!status?.verified
+  const issues = status?.issues?.length ? status.issues : ['No issues detected']
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: EASE_OUT, delay: index * 0.05 }}
+      className="rounded-[28px] border-[5px] border-green-50 bg-white/90 p-5 sm:p-6 shadow-sm"
+    >
+      {loading ? (
+        <div className="space-y-5">
+          <div className="h-14 w-full rounded-xl bg-gray-100 animate-pulse" />
+          <div className="h-8 w-2/3 rounded-lg bg-gray-100 animate-pulse" />
+          <div className="grid grid-cols-3 gap-3">
+            {[1, 2, 3].map(i => <div key={i} className="h-20 rounded-xl bg-gray-100 animate-pulse" />)}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="relative h-14 w-14 shrink-0 rounded-full bg-[#25D366] text-white shadow-sm ring-4 ring-green-50 flex items-center justify-center">
+                <Smartphone size={28} strokeWidth={2.4} />
+                <span className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-white flex items-center justify-center">
+                  <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-500">WhatsApp</p>
+                <h2 className="mt-4 flex items-center gap-3 text-2xl font-bold text-gray-900 truncate">
+                  <span className="truncate">{displayName}</span>
+                  <Edit3 size={18} className="shrink-0 text-gray-400" />
+                </h2>
+                <p className="mt-1 text-xl font-medium text-gray-500 truncate">{phoneNumber}</p>
+              </div>
+            </div>
+            <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-cyan-100 px-4 py-2 text-sm font-bold text-cyan-700">
+              <Star size={17} fill="currentColor" />
+              Primary
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+              <span className="inline-flex items-center gap-2 rounded-full bg-green-50 px-4 py-2 text-sm font-semibold text-green-700">
+              <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+              {isConnected ? 'Active' : 'Pending'}
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full bg-green-50 px-4 py-2 text-sm font-semibold text-green-700">
+              <CheckCircle2 size={18} />
+              {status?.registered ? 'Registered' : 'Not registered'}
+            </span>
+            <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${
+              isVerified ? 'bg-blue-50 text-blue-700' : 'bg-gray-50 text-gray-500'
+            }`}>
+              <ShieldCheck size={18} />
+              {isVerified ? 'Verified' : 'Unverified'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
+              <p className="text-xs font-bold uppercase text-gray-400">Quality</p>
+              <p className="mt-3 flex items-center gap-2 text-base font-semibold text-gray-700">
+                <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                {qualityLabel}
+              </p>
+            </div>
+            <div className="rounded-xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
+              <p className="text-xs font-bold uppercase text-gray-400">Messaging</p>
+              <p className="mt-3 flex items-center gap-2 text-base font-semibold text-gray-700">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                {messagingLabel}
+              </p>
+            </div>
+            <div className="rounded-xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
+              <p className="text-xs font-bold uppercase text-gray-400">Limit</p>
+              <p className="mt-3 text-base font-semibold text-gray-700">{dailyLimit}</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowIssues(true)}
+            className="flex w-fit items-center gap-2 rounded-lg text-sm font-bold uppercase text-orange-600 transition-colors hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-200"
+          >
+            <AlertTriangle size={18} />
+            {issueCount} {issueCount === 1 ? 'Issue' : 'Issues'}
+          </button>
+
+          <Modal isOpen={showIssues} onClose={() => setShowIssues(false)} title="WhatsApp Issues" size="sm">
+            <div className="space-y-4">
+              <div className="rounded-xl bg-gray-50 p-4">
+                <p className="text-xs font-semibold uppercase text-gray-400">Account</p>
+                <p className="mt-1 text-sm font-semibold text-gray-800">{displayName}</p>
+                <p className="text-sm text-gray-500">{phoneNumber || 'No number connected'}</p>
+              </div>
+
+              <div className="space-y-2">
+                {issues.map((issue) => (
+                  <div key={issue} className="flex gap-3 rounded-lg border border-orange-100 bg-orange-50 px-3 py-2.5 text-sm text-orange-800">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                    <span>{issue}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-400">Phone</p>
+                  <p className="mt-1 font-medium text-gray-700">{status?.phoneStatus || 'Unknown'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-400">Name</p>
+                  <p className="mt-1 font-medium text-gray-700">{status?.nameStatus || 'Unknown'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-400">Code</p>
+                  <p className="mt-1 font-medium text-gray-700">{status?.codeVerificationStatus || 'Unknown'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-400">Source</p>
+                  <p className="mt-1 font-medium capitalize text-gray-700">{status?.source || 'Unknown'}</p>
+                </div>
+              </div>
+            </div>
+          </Modal>
+        </div>
+      )}
+    </motion.div>
+  )
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const [stats, setStats] = useState(null)
@@ -160,8 +315,9 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DeliveryCard index={3} stats={delivery} loading={loading} />
-        <SimpleKPI index={4} loading={loading} title="Approved Templates" value={(stats?.activeFlows ?? 0).toLocaleString()} delta="ready to use" deltaType="positive" icon={Bot} />
+        <WhatsAppStatusCard index={3} status={stats?.whatsappStatus} loading={loading} />
+        <DeliveryCard index={4} stats={delivery} loading={loading} />
+        <SimpleKPI index={5} loading={loading} title="Approved Templates" value={(stats?.activeFlows ?? 0).toLocaleString()} delta="ready to use" deltaType="positive" icon={Bot} />
         {/* <UsageCard index={5} limits={stats?.limits} usage={stats?.usage} plan={stats?.plan} /> */}
       </div>
 

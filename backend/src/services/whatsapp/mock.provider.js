@@ -29,7 +29,25 @@ async function verifyCredentials({ accessToken, phoneNumberId, wabaId }) {
     verifiedName:  'Mock Business',
     displayPhone:  '+91 00000 00000',
     qualityRating: 'GREEN',
+    phoneStatus:   'CONNECTED',
+    nameStatus:    'APPROVED',
+    messagingLimitTier: 'TIER_250',
+    codeVerificationStatus: 'VERIFIED',
     wabaName:      'Mock WABA',
+  }
+}
+
+async function getPhoneNumberDetails(config) {
+  await delay(100)
+  return {
+    id: config?.phoneNumberId || 'mock_phone_001',
+    verifiedName: 'Mock Business',
+    displayPhone: '+91 00000 00000',
+    qualityRating: 'GREEN',
+    phoneStatus: 'CONNECTED',
+    nameStatus: 'APPROVED',
+    messagingLimitTier: 'TIER_250',
+    codeVerificationStatus: 'VERIFIED',
   }
 }
 
@@ -102,5 +120,6 @@ module.exports = {
   exchangeCodeForToken,
   getWABAInfo,
   verifyCredentials,
+  getPhoneNumberDetails,
   debugAccessToken,
 }
