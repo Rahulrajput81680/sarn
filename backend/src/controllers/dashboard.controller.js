@@ -51,18 +51,25 @@ function buildWhatsAppStatus(tenant, liveDetails, liveError) {
   const phoneStatus = merged.phoneStatus || (isConnected ? 'CONNECTED' : 'DISCONNECTED')
   const nameStatus = merged.nameStatus || 'UNKNOWN'
   const codeVerificationStatus = merged.codeVerificationStatus || 'UNKNOWN'
-  const hasApprovedName = nameStatus === 'APPROVED'
-  const hasVerifiedCode = codeVerificationStatus === 'VERIFIED'
-  const hasKnownVerificationProblem =
-    (nameStatus !== 'UNKNOWN' && !hasApprovedName) ||
-    (codeVerificationStatus !== 'UNKNOWN' && !hasVerifiedCode)
-  const verified = isConnected && phoneStatus === 'CONNECTED' && !hasKnownVerificationProblem
+
+  // AVAILABLE_WITHOUT_REVIEW and PENDING_REVIEW are normal, fully-usable display-name states —
+  // the name works either way, it just didn't go through Meta's *optional* formal review.
+  // Only DECLINED/NONE actually indicate a real problem worth surfacing.
+  const NAME_STATUS_OK = new Set(['APPROVED', 'AVAILABLE_WITHOUT_REVIEW', 'PENDING_REVIEW', 'UNKNOWN'])
+  const hasNameProblem = !NAME_STATUS_OK.has(nameStatus)
+
+  // code_verification_status only matters during initial setup, before the number is connected.
+  // Once CONNECTED, that one-time SMS/voice code is *supposed* to read EXPIRED forever — it
+  // already did its job — so it's not a live problem for an already-working number.
+  const hasCodeProblem = phoneStatus !== 'CONNECTED' && codeVerificationStatus !== 'VERIFIED' && codeVerificationStatus !== 'UNKNOWN'
+
+  const verified = isConnected && phoneStatus === 'CONNECTED' && !hasNameProblem
   const issues = []
 
   if (!isConnected) issues.push('WhatsApp is not connected')
   if (isConnected && phoneStatus !== 'CONNECTED') issues.push(`Phone status is ${phoneStatus}`)
-  if (isConnected && nameStatus !== 'APPROVED' && nameStatus !== 'UNKNOWN') issues.push(`Display name status is ${nameStatus}`)
-  if (isConnected && codeVerificationStatus !== 'VERIFIED' && codeVerificationStatus !== 'UNKNOWN') issues.push(`Code verification is ${codeVerificationStatus}`)
+  if (isConnected && hasNameProblem) issues.push(`Display name status is ${nameStatus}`)
+  if (isConnected && hasCodeProblem) issues.push(`Code verification is ${codeVerificationStatus}`)
   if (isConnected && String(merged.qualityRating || '').toUpperCase() === 'RED') issues.push('Quality rating is low')
   if (liveError) issues.push('Live Meta status could not be refreshed')
 
