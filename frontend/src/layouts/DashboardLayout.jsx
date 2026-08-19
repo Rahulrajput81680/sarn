@@ -8,7 +8,7 @@ import {
 import clsx from 'clsx'
 import useAuthStore from '../store/authStore'
 import useUIStore from '../store/uiStore'
-import OnboardingWizard from '../components/onboarding/OnboardingWizard'
+import ConnectWhatsAppModal from '../components/onboarding/ConnectWhatsAppModal'
 import axiosInstance from '../api/axios'
 
 const NAV = [
@@ -469,7 +469,7 @@ export default function DashboardLayout() {
       </div>
 
       {(!isOnboarded || showSetupModal) && (
-        <OnboardingWizard onDismiss={() => setShowSetupModal(false)} />
+        <ConnectWhatsAppModal onDismiss={() => setShowSetupModal(false)} />
       )}
     </div>
   )

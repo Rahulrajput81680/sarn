@@ -1,0 +1,11 @@
+# SPA fallback for React Router — without this, any direct hit on a route
+# other than "/" (e.g. /privacy-policy) 404s on Apache/LiteSpeed hosting
+# instead of loading index.html and letting the client-side router handle it.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>

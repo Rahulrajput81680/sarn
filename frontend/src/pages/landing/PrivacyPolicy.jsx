@@ -18,7 +18,7 @@ export default function PrivacyPolicy() {
             transition={{ delay: 0.2 }}
             className="text-gray-400 mt-4"
           >
-            Last Updated: February 2026
+            Last Updated: August 2026
           </motion.p>
         </div>
       </section>
@@ -28,7 +28,7 @@ export default function PrivacyPolicy() {
           <div className="space-y-10 text-gray-300 leading-relaxed">
             <Section title="1. Introduction">
               <p>
-                SARN Connect ("we", "our", "us") is committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website sarnconnect.in or use our services.
+                SARN Connect ("we", "our", "us") is committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard information when you visit our website sarnconnect.in, use our advertising and market research services, or when we operate WhatsApp business messaging on behalf of our business clients using the WhatsApp Business Platform provided by Meta Platforms, Inc. ("Meta").
               </p>
               <p className="mt-4">
                 By using our website and services, you consent to the practices described in this policy. If you do not agree with this policy, please do not use our website or services.
@@ -36,66 +36,83 @@ export default function PrivacyPolicy() {
             </Section>
 
             <Section title="2. Information We Collect">
-              <p>We may collect the following types of information:</p>
-              <ul className="list-disc pl-6 mt-3 space-y-1">
-                <li>Name, phone number, and email address</li>
-                <li>WhatsApp messaging data (with your explicit consent)</li>
-                <li>Business communication data</li>
-                <li>Website usage data (cookies, IP address, browser information)</li>
-              </ul>
+              <p><strong className="text-gray-200">Website visitors:</strong> name, email address, phone number, and messages submitted through our contact forms, together with standard website usage data (cookies, IP address, browser information).</p>
+              <p className="mt-3"><strong className="text-gray-200">WhatsApp messaging contacts:</strong> when a business uses our platform to communicate with its customers over WhatsApp, we process the recipient's name and phone number, message content, opt-in/opt-out status, and delivery/read status, for the sole purpose of sending and receiving those messages.</p>
             </Section>
 
             <Section title="3. How We Use Your Information">
-              <p>We use the information we collect for the following purposes:</p>
+              <p>Website and contact-form data may be used to:</p>
               <ul className="list-disc pl-6 mt-3 space-y-1">
-                <li>To provide advertising and marketing services</li>
-                <li>To send WhatsApp business communications (with opt-in consent)</li>
-                <li>To send transactional and service updates via WhatsApp</li>
-                <li>To respond to your inquiries and provide customer support</li>
-                <li>To improve our services and website experience</li>
+                <li>Respond to your inquiries and provide customer support</li>
+                <li>Operate and improve our website and services</li>
+                <li>Where you have separately engaged us as a client, to deliver the advertising and market research services described in your service agreement</li>
               </ul>
+              <p className="mt-4">WhatsApp messaging data is used strictly to:</p>
+              <ul className="list-disc pl-6 mt-3 space-y-1">
+                <li>Send the transactional, service, and marketing messages a recipient has explicitly opted in to receive from the business they are messaging with</li>
+                <li>Deliver customer support and respond to inbound messages</li>
+                <li>Track delivery, read, and opt-out status so businesses can honor consent in real time</li>
+              </ul>
+              <p className="mt-4 text-sm text-gray-400">
+                We do not use WhatsApp messaging data to build advertising profiles, for ad targeting, or for any purpose unrelated to the messaging service the recipient opted into.
+              </p>
             </Section>
 
-            <Section title="4. WhatsApp Communications">
+            <Section title="4. WhatsApp Business Communications & Meta Platform Compliance">
               <div className="bg-slate-800/60 border border-[#25D366]/30 rounded-xl p-6">
                 <p>
-                  We use WhatsApp Business API (provided by Meta Platforms Inc.) to send business communications. By opting in, you consent to receive WhatsApp messages from us. You can opt-out at any time by sending 'STOP' to our WhatsApp number or by contacting us at abwafakhan95@gmail.com.
+                  We use the WhatsApp Business Platform (provided by Meta) to send business communications on behalf of our clients. Messages are only sent to recipients who have explicitly opted in, and every recipient can opt out at any time by replying <strong className="text-gray-100">STOP</strong> to any message, or by contacting us at abwafakhan95@gmail.com — opt-outs are honored immediately.
                 </p>
                 <p className="mt-4">
-                  We only send messages to users who have explicitly opted in. We do not send spam or unsolicited messages. All communications comply with Meta's WhatsApp Business API policies and Indian regulations.
+                  Our use of the WhatsApp Business Platform, and any data obtained through it, complies with Meta's Platform Terms and the WhatsApp Business Messaging Policy. In particular:
                 </p>
+                <ul className="list-disc pl-6 mt-3 space-y-1">
+                  <li>Data obtained through WhatsApp is used only to provide the specific messaging service it was collected for — never for advertising, ad targeting, or building user profiles across other platforms or services</li>
+                  <li>We do not sell WhatsApp messaging data to any third party</li>
+                  <li>We do not send unsolicited bulk messages or spam</li>
+                </ul>
               </div>
             </Section>
 
-            <Section title="5. Data Sharing">
-              <p>We respect your privacy and do not sell your personal data to third parties. However, we may share your information in the following circumstances:</p>
+            <Section title="5. Data Sharing & Third Parties">
+              <p>We do not sell your personal data to third parties. We share information only in the following circumstances:</p>
               <ul className="list-disc pl-6 mt-3 space-y-1">
-                <li>With service providers who assist us in operating our business (e.g., Meta/WhatsApp for message delivery)</li>
-                <li>If required to comply with Indian law or legal process</li>
-                <li>To protect our rights, property, or safety</li>
+                <li>With Meta Platforms, Inc. (WhatsApp Business Platform), solely as needed to transmit and deliver messages</li>
+                <li>With infrastructure providers (cloud hosting and database storage) who process data on our behalf under confidentiality obligations</li>
+                <li>If required to comply with Indian law, a legal process, or a valid government request</li>
+                <li>To protect our rights, property, or safety, or that of our users</li>
               </ul>
             </Section>
 
             <Section title="6. Data Security">
               <p>
-                We implement industry-standard security measures to protect your personal information. This includes encrypted data storage, secure data transmission, and limited access to personal data on a need-to-know basis. However, no method of electronic storage is 100% secure, and we cannot guarantee absolute security.
+                We implement industry-standard security measures to protect your personal information, including encrypted storage of access credentials, encrypted data transmission (HTTPS/TLS), and access to personal data restricted to authorized personnel on a need-to-know basis. No method of electronic storage or transmission is 100% secure, and we cannot guarantee absolute security.
               </p>
             </Section>
 
-            <Section title="7. Your Rights">
-              <p>Under the Indian IT Act 2000 and applicable privacy laws, you have the following rights:</p>
+            <Section title="7. Data Retention">
+              <p>
+                We retain personal data and message history only for as long as necessary to provide our services, comply with our legal obligations, resolve disputes, and enforce our agreements. Contact and message data is deleted or anonymized when a business relationship ends and retention is no longer required by law, or sooner upon a valid deletion request.
+              </p>
+            </Section>
+
+            <Section title="8. Your Rights & Data Deletion" id="data-deletion">
+              <p>Under the Indian IT Act 2000 and applicable privacy laws, you have the right to:</p>
               <ul className="list-disc pl-6 mt-3 space-y-1">
-                <li>Right to access your personal data held by us</li>
-                <li>Right to request correction of inaccurate data</li>
-                <li>Right to request deletion of your data</li>
-                <li>Right to opt-out of communications at any time</li>
+                <li>Access the personal data we hold about you</li>
+                <li>Request correction of inaccurate data</li>
+                <li>Request deletion of your personal data</li>
+                <li>Opt out of communications at any time</li>
               </ul>
-              <p className="mt-3">
-                To exercise any of these rights, please contact us at abwafakhan95@gmail.com.
-              </p>
+              <div className="mt-4 bg-slate-800/60 border border-blue-500/20 rounded-xl p-6">
+                <p className="font-semibold text-gray-100">How to request data deletion</p>
+                <p className="mt-2">
+                  To delete your data: reply <strong className="text-gray-100">STOP</strong> to any WhatsApp message to immediately opt out of further messaging, and/or email <strong className="text-gray-100">abwafakhan95@gmail.com</strong> with the phone number or account you'd like deleted. We will delete or anonymize the associated personal data within 30 days, except where we are required to retain it by law.
+                </p>
+              </div>
             </Section>
 
-            <Section title="8. Cookies Policy">
+            <Section title="9. Cookies Policy">
               <p>
                 Our website may use cookies and similar tracking technologies to enhance your browsing experience. Cookies are small text files stored on your device. We use:
               </p>
@@ -108,18 +125,24 @@ export default function PrivacyPolicy() {
               </p>
             </Section>
 
-            <Section title="9. Contact for Privacy Queries">
+            <Section title="10. Children's Privacy">
+              <p>
+                Our website and services are not directed at children under the age of 18, and we do not knowingly collect personal data from minors. If we become aware that we have inadvertently collected data from a minor, we will delete it promptly.
+              </p>
+            </Section>
+
+            <Section title="11. Changes to This Policy">
+              <p>
+                We may update this Privacy Policy from time to time. We will notify users of material changes by posting the updated policy on this page with a revised "Last Updated" date. Your continued use of our website and services after changes constitutes acceptance of the updated policy.
+              </p>
+            </Section>
+
+            <Section title="12. Contact Us">
               <p>If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us:</p>
               <div className="mt-3 space-y-1">
                 <p><strong>Email:</strong> abwafakhan95@gmail.com</p>
                 <p><strong>Address:</strong> Safed Pool, Shanti Nagar, Masjid, Mumbai - 400072, Maharashtra, India</p>
               </div>
-            </Section>
-
-            <Section title="10. Changes to This Policy">
-              <p>
-                We may update this Privacy Policy from time to time. We will notify users of material changes by posting the updated policy on this page with a revised "Last Updated" date. Your continued use of our website and services after changes constitutes acceptance of the updated policy.
-              </p>
             </Section>
           </div>
         </div>
@@ -128,9 +151,10 @@ export default function PrivacyPolicy() {
   )
 }
 
-function Section({ title, children }) {
+function Section({ title, children, id }) {
   return (
     <motion.div
+      id={id}
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}

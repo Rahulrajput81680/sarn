@@ -7,6 +7,7 @@ const { success } = require('../utils/apiResponse')
 const { generateApiKey } = require('../utils/generateToken')
 const { encrypt, decrypt } = require('../utils/encryption')
 const waService = require('../services/whatsapp/whatsapp.service')
+const { translateMetaError } = require('../utils/metaErrors')
 
 // GET /api/v1/profile
 const getProfile = asyncHandler(async (req, res) => {
@@ -178,11 +179,24 @@ const connectWhatsAppOAuth = asyncHandler(async (req, res) => {
     return res.status(500).json({ success: false, message: 'META_APP_ID or META_APP_SECRET not configured on the server' })
   }
 
-  // Exchange code server-side — token is never exposed to the browser
-  const { accessToken } = await waService.exchangeCodeForToken({ code, appId, appSecret })
+  // Exchange code server-side — token is never exposed to the browser.
+  // Meta's auth code is single-use and short-lived (often under a minute), so a
+  // cold-started server (e.g. Render free tier waking from idle) can easily miss
+  // the window — surface Meta's real error instead of a generic axios message.
+  let accessToken
+  try {
+    ;({ accessToken } = await waService.exchangeCodeForToken({ code, appId, appSecret }))
+  } catch (err) {
+    return res.status(502).json({ success: false, message: translateMetaError(err) })
+  }
 
   // Fetch all WABAs and phone numbers linked to this token
-  const businesses = await waService.getWABAInfo(accessToken)
+  let businesses
+  try {
+    businesses = await waService.getWABAInfo(accessToken)
+  } catch (err) {
+    return res.status(502).json({ success: false, message: translateMetaError(err) })
+  }
 
   const options = []
   for (const biz of businesses) {
