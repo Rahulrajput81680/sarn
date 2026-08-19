@@ -57,6 +57,12 @@ async function getWABAInfo(accessToken) {
   return provider.getWABAInfo(accessToken)
 }
 
+// Registers a newly-added phone number for Cloud API use — required after Embedded Signup
+// before the number can actually send/receive (see meta.provider.js for why)
+async function registerPhoneNumber({ phoneNumberId, accessToken, pin }) {
+  return provider.registerPhoneNumber({ phoneNumberId, accessToken, pin })
+}
+
 // Verifies raw, not-yet-saved credentials against Meta before they're persisted.
 // No tenantId — this runs pre-connection, so it talks to the provider directly.
 async function verifyCredentials({ accessToken, phoneNumberId, wabaId }) {
@@ -108,6 +114,7 @@ module.exports = {
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,
+  registerPhoneNumber,
   verifyCredentials,
   checkTokenExpiry,
   refreshPhoneNumberDetails,

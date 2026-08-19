@@ -99,6 +99,10 @@ async function getWABAInfo(accessToken) {
   ]
 }
 
+async function registerPhoneNumber({ phoneNumberId, accessToken, pin }) {
+  await delay(200)
+}
+
 async function sendMediaMessage({ to, mediaType, mediaUrl, caption = '', config }) {
   await delay(200)
   return { messageId: `mock_${uuidv4()}`, status: 'sent', timestamp: new Date() }
@@ -119,6 +123,7 @@ module.exports = {
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,
+  registerPhoneNumber,
   verifyCredentials,
   getPhoneNumberDetails,
   debugAccessToken,

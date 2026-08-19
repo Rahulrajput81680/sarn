@@ -249,11 +249,26 @@ const selectWhatsAppNumber = asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'OAuth session expired. Please reconnect with Meta.' })
   }
 
+  // A number added via Embedded Signup is phone-verified but not yet registered for Cloud API
+  // use — without this call the number is saved as "connected" in our own DB while Meta still
+  // silently refuses every send. This also sets the number's 2-step-verification PIN.
+  const oauthAccessToken = decrypt(tenant.whatsapp.oauthToken)
+  const pin = String(Math.floor(100000 + Math.random() * 900000))
+  try {
+    await waService.registerPhoneNumber({ phoneNumberId, accessToken: oauthAccessToken, pin })
+  } catch (err) {
+    const alreadyRegistered = /already registered|already exists/i.test(err.response?.data?.error?.message || '')
+    if (!alreadyRegistered) {
+      return res.status(502).json({ success: false, message: translateMetaError(err) })
+    }
+  }
+
   // Promote temp token → permanent access token; clear the temporary fields
   const updated = await Tenant.findByIdAndUpdate(
     req.user.tenant,
     {
       'whatsapp.accessToken':          tenant.whatsapp.oauthToken, // already encrypted
+      'whatsapp.registrationPin':      encrypt(pin),
       'whatsapp.phoneNumberId':        phoneNumberId,
       'whatsapp.wabaId':               wabaId,
       'whatsapp.displayName':          displayName || displayPhone || phoneNumberId,

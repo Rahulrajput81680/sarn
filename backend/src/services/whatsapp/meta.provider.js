@@ -194,6 +194,17 @@ async function getWABAInfo(accessToken) {
   return data.data || []
 }
 
+// Activates a phone number for Cloud API messaging (used right after Embedded Signup). Meta
+// treats "verified via SMS/voice OTP during signup" and "registered for the Cloud API" as two
+// separate steps — a newly-added number can complete signup successfully and still be unable
+// to send/receive until this call succeeds. Also sets the number's two-step-verification PIN.
+async function registerPhoneNumber({ phoneNumberId, accessToken, pin }) {
+  await axios.post(`${BASE}/${phoneNumberId}/register`,
+    { messaging_product: 'whatsapp', pin },
+    { headers: { Authorization: `Bearer ${accessToken}` }, timeout: 15000 }
+  )
+}
+
 async function sendMediaMessage({ to, mediaType, mediaUrl, caption = '', config }) {
   const payload = { link: mediaUrl }
   if (caption) payload.caption = caption
@@ -223,6 +234,7 @@ module.exports = {
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,
+  registerPhoneNumber,
   verifyCredentials,
   getPhoneNumberDetails,
   debugAccessToken,
