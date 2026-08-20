@@ -63,6 +63,12 @@ async function registerPhoneNumber({ phoneNumberId, accessToken, pin }) {
   return provider.registerPhoneNumber({ phoneNumberId, accessToken, pin })
 }
 
+// Subscribes our app's webhook to a WABA's events — required per-WABA after Embedded Signup,
+// otherwise Meta never forwards inbound messages/status updates for that number (see meta.provider.js)
+async function subscribeToWebhooks({ wabaId, accessToken }) {
+  return provider.subscribeToWebhooks({ wabaId, accessToken })
+}
+
 // Directly resolves one phone number's option info from a known wabaId/phoneNumberId pair
 // (the Embedded Signup postMessage hint) instead of crawling /me/businesses
 async function getPhoneNumberOption({ accessToken, wabaId, phoneNumberId }) {
@@ -122,6 +128,7 @@ module.exports = {
   getWABAInfo,
   getPhoneNumberOption,
   registerPhoneNumber,
+  subscribeToWebhooks,
   verifyCredentials,
   checkTokenExpiry,
   refreshPhoneNumberDetails,

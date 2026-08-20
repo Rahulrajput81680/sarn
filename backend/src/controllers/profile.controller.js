@@ -279,6 +279,16 @@ const selectWhatsAppNumber = asyncHandler(async (req, res) => {
     }
   }
 
+  // Subscribes our webhook to this WABA so inbound messages/status updates actually arrive.
+  // Non-fatal: the number can still send without this, so a transient failure here shouldn't
+  // block an otherwise-successful connection — but it's why messages wouldn't show up in the
+  // Inbox even though the connection looks fine, so it's logged for diagnosis.
+  try {
+    await waService.subscribeToWebhooks({ wabaId, accessToken: oauthAccessToken })
+  } catch (err) {
+    console.error(`[wa-select-number] Failed to subscribe webhook for WABA ${wabaId}:`, err.response?.data || err.message)
+  }
+
   // Promote temp token → permanent access token; clear the temporary fields
   const updated = await Tenant.findByIdAndUpdate(
     req.user.tenant,

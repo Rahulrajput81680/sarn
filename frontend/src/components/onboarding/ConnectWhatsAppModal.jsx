@@ -197,9 +197,19 @@ export default function ConnectWhatsAppModal({ onDismiss }) {
     }
   }
 
-  const handleEnterDashboard = () => {
+  const handleEnterDashboard = async () => {
     useAuthStore.getState().setOnboarded()
+    // Dashboard and the sidebar's "Connected" badge were already mounted (and already fetched
+    // their data) before this connection finished, so just closing the modal leaves them showing
+    // stale pre-connection state until the user happens to navigate away and back. Refresh the
+    // stored user (so the header/sidebar badge is correct) and do a full reload (so Dashboard's
+    // own one-time data fetch runs again with the number now actually connected).
+    try {
+      const { data } = await axiosInstance.get('/api/v1/profile')
+      if (data.data?.user) useAuthStore.getState().updateUser(data.data.user)
+    } catch {}
     onDismiss?.()
+    window.location.reload()
   }
 
   const embeddedSignupAvailable = appId && configId && fbReady

@@ -194,6 +194,17 @@ async function getWABAInfo(accessToken) {
   return data.data || []
 }
 
+// Subscribes SarnConnect's app-level webhook to this WABA's events (messages, status updates).
+// Without this, Meta never forwards inbound messages for a newly-added WABA to our webhook URL,
+// even though the URL itself is already configured correctly at the App level — this is a
+// required per-WABA step Meta's Embedded Signup does NOT do automatically.
+async function subscribeToWebhooks({ wabaId, accessToken }) {
+  await axios.post(`${BASE}/${wabaId}/subscribed_apps`, {}, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    timeout: 15000,
+  })
+}
+
 // Directly resolves a single phone number's option info when the exact wabaId/phoneNumberId are
 // already known (from the Embedded Signup postMessage event) — avoids relying on /me/businesses,
 // which can lag behind or omit a business/WABA that was just created in this same signup session.
@@ -254,6 +265,7 @@ module.exports = {
   getWABAInfo,
   getPhoneNumberOption,
   registerPhoneNumber,
+  subscribeToWebhooks,
   verifyCredentials,
   getPhoneNumberDetails,
   debugAccessToken,

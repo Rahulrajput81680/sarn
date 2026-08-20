@@ -103,6 +103,10 @@ async function registerPhoneNumber({ phoneNumberId, accessToken, pin }) {
   await delay(200)
 }
 
+async function subscribeToWebhooks({ wabaId, accessToken }) {
+  await delay(100)
+}
+
 async function getPhoneNumberOption({ accessToken, wabaId, phoneNumberId }) {
   await delay(100)
   return [{
@@ -133,6 +137,7 @@ module.exports = {
   getWABAInfo,
   getPhoneNumberOption,
   registerPhoneNumber,
+  subscribeToWebhooks,
   verifyCredentials,
   getPhoneNumberDetails,
   debugAccessToken,
