@@ -194,6 +194,24 @@ async function getWABAInfo(accessToken) {
   return data.data || []
 }
 
+// Directly resolves a single phone number's option info when the exact wabaId/phoneNumberId are
+// already known (from the Embedded Signup postMessage event) — avoids relying on /me/businesses,
+// which can lag behind or omit a business/WABA that was just created in this same signup session.
+async function getPhoneNumberOption({ accessToken, wabaId, phoneNumberId }) {
+  const client = getClient({ accessToken })
+  const [wabaRes, phoneRes] = await Promise.all([
+    client.get(`/${wabaId}`, { params: { fields: 'id,name' } }),
+    client.get(`/${phoneNumberId}`, { params: { fields: 'id,display_phone_number,verified_name' } }),
+  ])
+  return [{
+    wabaId:        wabaRes.data.id,
+    wabaName:      wabaRes.data.name,
+    phoneNumberId: phoneRes.data.id,
+    displayPhone:  phoneRes.data.display_phone_number,
+    verifiedName:  phoneRes.data.verified_name,
+  }]
+}
+
 // Activates a phone number for Cloud API messaging (used right after Embedded Signup). Meta
 // treats "verified via SMS/voice OTP during signup" and "registered for the Cloud API" as two
 // separate steps — a newly-added number can complete signup successfully and still be unable
@@ -234,6 +252,7 @@ module.exports = {
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,
+  getPhoneNumberOption,
   registerPhoneNumber,
   verifyCredentials,
   getPhoneNumberDetails,

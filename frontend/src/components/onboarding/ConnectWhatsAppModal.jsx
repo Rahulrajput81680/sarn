@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
   Check, ChevronRight, Loader2, CheckCircle2,
@@ -78,6 +78,29 @@ export default function ConnectWhatsAppModal({ onDismiss }) {
   const [form,      setForm]      = useState({ phoneNumberId: '', wabaId: '', accessToken: '' })
   const [showToken, setShowToken] = useState(false)
 
+  // Meta's popup posts the exact waba_id/phone_number_id here as soon as signup finishes
+  // (enabled by sessionInfoVersion: 2 below) — captured so we can hand it straight to the
+  // backend instead of relying solely on /me/businesses, which can lag behind a business/WABA
+  // that was just created inside this same signup session.
+  const wabaHintRef = useRef({ wabaId: null, phoneNumberId: null })
+
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (!event.origin.endsWith('facebook.com')) return
+      let data
+      try { data = JSON.parse(event.data) } catch { return }
+      if (data.type !== 'WA_EMBEDDED_SIGNUP') return
+      if (data.event === 'FINISH' || data.event === 'FINISH_ONLY_WABA') {
+        wabaHintRef.current = {
+          wabaId:        data.data?.waba_id || null,
+          phoneNumberId: data.data?.phone_number_id || null,
+        }
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
+
   const finish = async (name) => {
     setCompleting(true)
     try {
@@ -93,7 +116,11 @@ export default function ConnectWhatsAppModal({ onDismiss }) {
   const handleAuthCode = async (code) => {
     setLoading(true)
     try {
-      const { data } = await axiosInstance.post('/api/v1/profile/wa-connect-oauth', { code })
+      const { data } = await axiosInstance.post('/api/v1/profile/wa-connect-oauth', {
+        code,
+        wabaId:        wabaHintRef.current.wabaId,
+        phoneNumberId: wabaHintRef.current.phoneNumberId,
+      })
       const opts = data.data?.options || []
       if (opts.length === 1) {
         await finalizeNumber(opts[0])

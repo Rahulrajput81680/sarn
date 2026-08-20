@@ -170,7 +170,7 @@ const connectWhatsApp = asyncHandler(async (req, res) => {
 // Exchanges an auth code for a token and returns available WABA/phone options.
 // The token is stored server-side only — never sent to the client.
 const connectWhatsAppOAuth = asyncHandler(async (req, res) => {
-  const { code } = req.body
+  const { code, wabaId: hintWabaId, phoneNumberId: hintPhoneNumberId } = req.body
   if (!code) return res.status(400).json({ success: false, message: 'OAuth code is required' })
 
   const appId     = process.env.META_APP_ID
@@ -190,25 +190,41 @@ const connectWhatsAppOAuth = asyncHandler(async (req, res) => {
     return res.status(502).json({ success: false, message: translateMetaError(err) })
   }
 
-  // Fetch all WABAs and phone numbers linked to this token
-  let businesses
-  try {
-    businesses = await waService.getWABAInfo(accessToken)
-  } catch (err) {
-    return res.status(502).json({ success: false, message: translateMetaError(err) })
+  let options = []
+
+  // Prefer the exact WABA/number Meta's popup reported directly via postMessage
+  // (sessionInfoVersion: 2) — /me/businesses can lag behind or omit a business/WABA
+  // that was just created inside this same signup session.
+  if (hintWabaId && hintPhoneNumberId) {
+    try {
+      options = await waService.getPhoneNumberOption({
+        accessToken, wabaId: hintWabaId, phoneNumberId: hintPhoneNumberId,
+      })
+    } catch {
+      options = [] // fall through to the /me/businesses crawl below
+    }
   }
 
-  const options = []
-  for (const biz of businesses) {
-    for (const waba of (biz.whatsapp_business_accounts?.data || [])) {
-      for (const phone of (waba.phone_numbers?.data || [])) {
-        options.push({
-          wabaId:        waba.id,
-          wabaName:      waba.name || biz.name,
-          phoneNumberId: phone.id,
-          displayPhone:  phone.display_phone_number,
-          verifiedName:  phone.verified_name,
-        })
+  if (options.length === 0) {
+    // Fetch all WABAs and phone numbers linked to this token
+    let businesses
+    try {
+      businesses = await waService.getWABAInfo(accessToken)
+    } catch (err) {
+      return res.status(502).json({ success: false, message: translateMetaError(err) })
+    }
+
+    for (const biz of businesses) {
+      for (const waba of (biz.whatsapp_business_accounts?.data || [])) {
+        for (const phone of (waba.phone_numbers?.data || [])) {
+          options.push({
+            wabaId:        waba.id,
+            wabaName:      waba.name || biz.name,
+            phoneNumberId: phone.id,
+            displayPhone:  phone.display_phone_number,
+            verifiedName:  phone.verified_name,
+          })
+        }
       }
     }
   }

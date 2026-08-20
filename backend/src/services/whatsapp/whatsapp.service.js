@@ -63,6 +63,12 @@ async function registerPhoneNumber({ phoneNumberId, accessToken, pin }) {
   return provider.registerPhoneNumber({ phoneNumberId, accessToken, pin })
 }
 
+// Directly resolves one phone number's option info from a known wabaId/phoneNumberId pair
+// (the Embedded Signup postMessage hint) instead of crawling /me/businesses
+async function getPhoneNumberOption({ accessToken, wabaId, phoneNumberId }) {
+  return provider.getPhoneNumberOption({ accessToken, wabaId, phoneNumberId })
+}
+
 // Verifies raw, not-yet-saved credentials against Meta before they're persisted.
 // No tenantId — this runs pre-connection, so it talks to the provider directly.
 async function verifyCredentials({ accessToken, phoneNumberId, wabaId }) {
@@ -114,6 +120,7 @@ module.exports = {
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,
+  getPhoneNumberOption,
   registerPhoneNumber,
   verifyCredentials,
   checkTokenExpiry,
