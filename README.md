@@ -1,6 +1,5 @@
 # SarnConnect — WhatsApp Business Automation Platform
 
-
 SarnConnect is a multi-tenant SaaS platform that lets businesses automate and scale their WhatsApp communication. It provides bulk messaging, a visual chatbot builder, a team inbox, contact management, analytics, and a full admin control panel — all built around the WhatsApp Business API.
 
 
