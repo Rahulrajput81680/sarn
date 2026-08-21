@@ -64,6 +64,7 @@ const sendMessage = asyncHandler(async (req, res) => {
 
   let waMessageId = null
   let status = 'sent'
+  let sendErrorDetail = null
 
   if (type === 'agent') {
     // Enforce Meta 24-hour messaging window — free-form messages only allowed within window
@@ -99,8 +100,9 @@ const sendMessage = asyncHandler(async (req, res) => {
       const result = await waService.sendTextMessage(req.tenantId, { to: conv.contact.phone, text })
       waMessageId = result.messageId
       status = result.status
-    } catch {
+    } catch (err) {
       status = 'failed'
+      sendErrorDetail = translateMetaError(err)
     }
 
     if (status !== 'failed') {
@@ -114,6 +116,7 @@ const sendMessage = asyncHandler(async (req, res) => {
     type,
     text,
     status: type === 'note' ? 'sent' : status,
+    error: status === 'failed' ? sendErrorDetail : null,
     sentBy: req.user._id,
     waMessageId,
     timestamp: new Date(),
