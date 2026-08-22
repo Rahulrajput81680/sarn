@@ -535,7 +535,7 @@ function NewConversationModal({ onClose, onStarted, initialContact = null }) {
         variables,
       })
       toast.success(`Message sent to ${selectedContact.name}`)
-      onStarted(data.data.conversation)
+      onStarted(data.data.conversation, data.data.message)
       onClose()
     } catch (err) {
       const msg  = err.response?.data?.message || 'Failed to send message'
@@ -1431,7 +1431,7 @@ export default function Inbox() {
           <NewConversationModal
             initialContact={typeof showNewConv === 'object' ? showNewConv : null}
             onClose={() => setShowNewConv(false)}
-            onStarted={(newConv) => {
+            onStarted={(newConv, newMsg) => {
               const normalized = normalizeConv(newConv)
               setConvs(cs => {
                 const exists = cs.find(c => c.id === normalized.id)
@@ -1439,6 +1439,12 @@ export default function Inbox() {
                   ? cs.map(c => c.id === normalized.id ? normalized : c)
                   : [normalized, ...cs]
               })
+              // Only append if this conversation's history is already loaded — otherwise this
+              // would seed messages[id] with just this one message, and the fetch effect (which
+              // skips fetching once messages[activeId] is set) would never pull the real history.
+              if (newMsg) {
+                setMessages(m => (m[normalized.id] ? { ...m, [normalized.id]: [...m[normalized.id], normalizeMsg(newMsg)] } : m))
+              }
               setActiveId(normalized.id)
               setShowList(false)
             }}

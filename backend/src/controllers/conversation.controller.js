@@ -2,6 +2,7 @@ const path = require('path')
 const Conversation = require('../models/Conversation')
 const Message = require('../models/Message')
 const Contact = require('../models/Contact')
+const Template = require('../models/Template')
 const Tenant  = require('../models/Tenant')
 const { getIO } = require('../config/socket')
 const asyncHandler = require('../utils/asyncHandler')
@@ -257,9 +258,17 @@ const startConversation = asyncHandler(async (req, res) => {
     })
   }
 
-  const displayText = variables.length
+  // Show the actual rendered message (like WhatsApp itself does) instead of a raw
+  // "[Template: name]" placeholder — fall back to the placeholder only if the template's
+  // body can't be found (e.g. it was deleted locally after being sent).
+  let displayText = variables.length
     ? `[Template: ${templateName}] ${variables.join(' · ')}`
     : `[Template: ${templateName}]`
+  const tpl = await Template.findOne({ tenant: req.tenantId, name: templateName }).lean()
+  const bodyText = tpl?.components?.find(c => c.type === 'BODY')?.text
+  if (bodyText) {
+    displayText = bodyText.replace(/\{\{(\d+)\}\}/g, (_, n) => variables[Number(n) - 1] ?? `{{${n}}}`)
+  }
 
   const message = await Message.create({
     conversation: conv._id,
