@@ -7,6 +7,7 @@ const { success } = require('../utils/apiResponse')
 const { generateApiKey } = require('../utils/generateToken')
 const { encrypt, decrypt } = require('../utils/encryption')
 const waService = require('../services/whatsapp/whatsapp.service')
+const { translateMetaError } = require('../utils/metaErrors')
 
 // GET /api/v1/profile
 const getProfile = asyncHandler(async (req, res) => {
@@ -169,7 +170,7 @@ const connectWhatsApp = asyncHandler(async (req, res) => {
 // Exchanges an auth code for a token and returns available WABA/phone options.
 // The token is stored server-side only — never sent to the client.
 const connectWhatsAppOAuth = asyncHandler(async (req, res) => {
-  const { code } = req.body
+  const { code, wabaId: hintWabaId, phoneNumberId: hintPhoneNumberId } = req.body
   if (!code) return res.status(400).json({ success: false, message: 'OAuth code is required' })
 
   const appId     = process.env.META_APP_ID
@@ -178,23 +179,52 @@ const connectWhatsAppOAuth = asyncHandler(async (req, res) => {
     return res.status(500).json({ success: false, message: 'META_APP_ID or META_APP_SECRET not configured on the server' })
   }
 
-  // Exchange code server-side — token is never exposed to the browser
-  const { accessToken } = await waService.exchangeCodeForToken({ code, appId, appSecret })
+  // Exchange code server-side — token is never exposed to the browser.
+  // Meta's auth code is single-use and short-lived (often under a minute), so a
+  // cold-started server (e.g. Render free tier waking from idle) can easily miss
+  // the window — surface Meta's real error instead of a generic axios message.
+  let accessToken
+  try {
+    ;({ accessToken } = await waService.exchangeCodeForToken({ code, appId, appSecret }))
+  } catch (err) {
+    return res.status(502).json({ success: false, message: translateMetaError(err) })
+  }
 
-  // Fetch all WABAs and phone numbers linked to this token
-  const businesses = await waService.getWABAInfo(accessToken)
+  let options = []
 
-  const options = []
-  for (const biz of businesses) {
-    for (const waba of (biz.whatsapp_business_accounts?.data || [])) {
-      for (const phone of (waba.phone_numbers?.data || [])) {
-        options.push({
-          wabaId:        waba.id,
-          wabaName:      waba.name || biz.name,
-          phoneNumberId: phone.id,
-          displayPhone:  phone.display_phone_number,
-          verifiedName:  phone.verified_name,
-        })
+  // Prefer the exact WABA/number Meta's popup reported directly via postMessage
+  // (sessionInfoVersion: 2) — /me/businesses can lag behind or omit a business/WABA
+  // that was just created inside this same signup session.
+  if (hintWabaId && hintPhoneNumberId) {
+    try {
+      options = await waService.getPhoneNumberOption({
+        accessToken, wabaId: hintWabaId, phoneNumberId: hintPhoneNumberId,
+      })
+    } catch {
+      options = [] // fall through to the /me/businesses crawl below
+    }
+  }
+
+  if (options.length === 0) {
+    // Fetch all WABAs and phone numbers linked to this token
+    let businesses
+    try {
+      businesses = await waService.getWABAInfo(accessToken)
+    } catch (err) {
+      return res.status(502).json({ success: false, message: translateMetaError(err) })
+    }
+
+    for (const biz of businesses) {
+      for (const waba of (biz.whatsapp_business_accounts?.data || [])) {
+        for (const phone of (waba.phone_numbers?.data || [])) {
+          options.push({
+            wabaId:        waba.id,
+            wabaName:      waba.name || biz.name,
+            phoneNumberId: phone.id,
+            displayPhone:  phone.display_phone_number,
+            verifiedName:  phone.verified_name,
+          })
+        }
       }
     }
   }
@@ -235,11 +265,36 @@ const selectWhatsAppNumber = asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'OAuth session expired. Please reconnect with Meta.' })
   }
 
+  // A number added via Embedded Signup is phone-verified but not yet registered for Cloud API
+  // use — without this call the number is saved as "connected" in our own DB while Meta still
+  // silently refuses every send. This also sets the number's 2-step-verification PIN.
+  const oauthAccessToken = decrypt(tenant.whatsapp.oauthToken)
+  const pin = String(Math.floor(100000 + Math.random() * 900000))
+  try {
+    await waService.registerPhoneNumber({ phoneNumberId, accessToken: oauthAccessToken, pin })
+  } catch (err) {
+    const alreadyRegistered = /already registered|already exists/i.test(err.response?.data?.error?.message || '')
+    if (!alreadyRegistered) {
+      return res.status(502).json({ success: false, message: translateMetaError(err) })
+    }
+  }
+
+  // Subscribes our webhook to this WABA so inbound messages/status updates actually arrive.
+  // Non-fatal: the number can still send without this, so a transient failure here shouldn't
+  // block an otherwise-successful connection — but it's why messages wouldn't show up in the
+  // Inbox even though the connection looks fine, so it's logged for diagnosis.
+  try {
+    await waService.subscribeToWebhooks({ wabaId, accessToken: oauthAccessToken })
+  } catch (err) {
+    console.error(`[wa-select-number] Failed to subscribe webhook for WABA ${wabaId}:`, err.response?.data || err.message)
+  }
+
   // Promote temp token → permanent access token; clear the temporary fields
   const updated = await Tenant.findByIdAndUpdate(
     req.user.tenant,
     {
       'whatsapp.accessToken':          tenant.whatsapp.oauthToken, // already encrypted
+      'whatsapp.registrationPin':      encrypt(pin),
       'whatsapp.phoneNumberId':        phoneNumberId,
       'whatsapp.wabaId':               wabaId,
       'whatsapp.displayName':          displayName || displayPhone || phoneNumberId,

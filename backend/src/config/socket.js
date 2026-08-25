@@ -42,15 +42,6 @@ function initSocket(server) {
       socket.join(`tenant:${socket.tenantId}`)
     }
 
-    // Join a specific conversation room
-    socket.on('join_conversation', (conversationId) => {
-      socket.join(`conv:${conversationId}`)
-    })
-
-    socket.on('leave_conversation', (conversationId) => {
-      socket.leave(`conv:${conversationId}`)
-    })
-
     socket.on('disconnect', () => {})
   })
 

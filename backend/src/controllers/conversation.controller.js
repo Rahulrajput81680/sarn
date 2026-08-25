@@ -2,6 +2,7 @@ const path = require('path')
 const Conversation = require('../models/Conversation')
 const Message = require('../models/Message')
 const Contact = require('../models/Contact')
+const Template = require('../models/Template')
 const Tenant  = require('../models/Tenant')
 const { getIO } = require('../config/socket')
 const asyncHandler = require('../utils/asyncHandler')
@@ -64,6 +65,7 @@ const sendMessage = asyncHandler(async (req, res) => {
 
   let waMessageId = null
   let status = 'sent'
+  let sendErrorDetail = null
 
   if (type === 'agent') {
     // Enforce Meta 24-hour messaging window — free-form messages only allowed within window
@@ -99,8 +101,9 @@ const sendMessage = asyncHandler(async (req, res) => {
       const result = await waService.sendTextMessage(req.tenantId, { to: conv.contact.phone, text })
       waMessageId = result.messageId
       status = result.status
-    } catch {
+    } catch (err) {
       status = 'failed'
+      sendErrorDetail = translateMetaError(err)
     }
 
     if (status !== 'failed') {
@@ -114,6 +117,7 @@ const sendMessage = asyncHandler(async (req, res) => {
     type,
     text,
     status: type === 'note' ? 'sent' : status,
+    error: status === 'failed' ? sendErrorDetail : null,
     sentBy: req.user._id,
     waMessageId,
     timestamp: new Date(),
@@ -126,7 +130,10 @@ const sendMessage = asyncHandler(async (req, res) => {
     updatedAt: new Date(),
   })
 
-  getIO().to(`conv:${conv._id}`).emit('new_message', { message: populated })
+  // Broadcast tenant-wide (not just to whoever has this specific conversation open) so the
+  // conversation list's unread badge / last-message preview updates instantly for a chat the
+  // agent isn't currently viewing — every socket for this tenant already auto-joins this room.
+  getIO().to(`tenant:${req.tenantId}`).emit('new_message', { message: populated })
 
   return success(res, { message: populated }, 'Message sent', 201)
 })
@@ -198,7 +205,7 @@ const simulateIncoming = asyncHandler(async (req, res) => {
 
   const io = getIO()
   io.to(`tenant:${req.tenantId}`).emit('new_conversation_message', { conversationId: conv._id, message: msg, contact })
-  io.to(`conv:${conv._id}`).emit('new_message', { message: msg })
+  io.to(`tenant:${req.tenantId}`).emit('new_message', { message: msg })
 
   return success(res, { message: msg, conversation: conv, contact }, 'Incoming message simulated')
 })
@@ -254,9 +261,17 @@ const startConversation = asyncHandler(async (req, res) => {
     })
   }
 
-  const displayText = variables.length
+  // Show the actual rendered message (like WhatsApp itself does) instead of a raw
+  // "[Template: name]" placeholder — fall back to the placeholder only if the template's
+  // body can't be found (e.g. it was deleted locally after being sent).
+  let displayText = variables.length
     ? `[Template: ${templateName}] ${variables.join(' · ')}`
     : `[Template: ${templateName}]`
+  const tpl = await Template.findOne({ tenant: req.tenantId, name: templateName }).lean()
+  const bodyText = tpl?.components?.find(c => c.type === 'BODY')?.text
+  if (bodyText) {
+    displayText = bodyText.replace(/\{\{(\d+)\}\}/g, (_, n) => variables[Number(n) - 1] ?? `{{${n}}}`)
+  }
 
   const message = await Message.create({
     conversation: conv._id,
@@ -349,7 +364,7 @@ const sendMediaMessage = asyncHandler(async (req, res) => {
     updatedAt:   new Date(),
   })
 
-  getIO().to(`conv:${conv._id}`).emit('new_message', { message: populated })
+  getIO().to(`tenant:${req.tenantId}`).emit('new_message', { message: populated })
 
   return success(res, { message: populated }, 'Media sent', 201)
 })

@@ -16,6 +16,9 @@ const tenantSchema = new mongoose.Schema(
       messagingLimitTier: { type: String, trim: true },
       codeVerificationStatus: { type: String, trim: true },
       accessToken:   { type: String, select: false }, // AES-256 encrypted — never returned by default
+      // 6-digit 2-step-verification PIN set on the number during Embedded Signup registration
+      // (see meta.provider.js registerPhoneNumber) — encrypted, kept in case re-registration is ever needed
+      registrationPin: { type: String, select: false },
       connectedAt:   { type: Date, default: null },
       statusLastCheckedAt: { type: Date, default: null },
       // null = unknown/never checked, 0 (as Date(0)) is not used — a non-expiring token stores null here

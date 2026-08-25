@@ -99,6 +99,22 @@ async function getWABAInfo(accessToken) {
   ]
 }
 
+async function registerPhoneNumber({ phoneNumberId, accessToken, pin }) {
+  await delay(200)
+}
+
+async function subscribeToWebhooks({ wabaId, accessToken }) {
+  await delay(100)
+}
+
+async function getPhoneNumberOption({ accessToken, wabaId, phoneNumberId }) {
+  await delay(100)
+  return [{
+    wabaId, wabaName: 'Mock WABA', phoneNumberId,
+    displayPhone: '+91 00000 00000', verifiedName: 'Mock Business',
+  }]
+}
+
 async function sendMediaMessage({ to, mediaType, mediaUrl, caption = '', config }) {
   await delay(200)
   return { messageId: `mock_${uuidv4()}`, status: 'sent', timestamp: new Date() }
@@ -119,6 +135,9 @@ module.exports = {
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,
+  getPhoneNumberOption,
+  registerPhoneNumber,
+  subscribeToWebhooks,
   verifyCredentials,
   getPhoneNumberDetails,
   debugAccessToken,

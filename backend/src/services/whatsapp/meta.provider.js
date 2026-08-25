@@ -194,6 +194,46 @@ async function getWABAInfo(accessToken) {
   return data.data || []
 }
 
+// Subscribes SarnConnect's app-level webhook to this WABA's events (messages, status updates).
+// Without this, Meta never forwards inbound messages for a newly-added WABA to our webhook URL,
+// even though the URL itself is already configured correctly at the App level — this is a
+// required per-WABA step Meta's Embedded Signup does NOT do automatically.
+async function subscribeToWebhooks({ wabaId, accessToken }) {
+  await axios.post(`${BASE}/${wabaId}/subscribed_apps`, {}, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    timeout: 15000,
+  })
+}
+
+// Directly resolves a single phone number's option info when the exact wabaId/phoneNumberId are
+// already known (from the Embedded Signup postMessage event) — avoids relying on /me/businesses,
+// which can lag behind or omit a business/WABA that was just created in this same signup session.
+async function getPhoneNumberOption({ accessToken, wabaId, phoneNumberId }) {
+  const client = getClient({ accessToken })
+  const [wabaRes, phoneRes] = await Promise.all([
+    client.get(`/${wabaId}`, { params: { fields: 'id,name' } }),
+    client.get(`/${phoneNumberId}`, { params: { fields: 'id,display_phone_number,verified_name' } }),
+  ])
+  return [{
+    wabaId:        wabaRes.data.id,
+    wabaName:      wabaRes.data.name,
+    phoneNumberId: phoneRes.data.id,
+    displayPhone:  phoneRes.data.display_phone_number,
+    verifiedName:  phoneRes.data.verified_name,
+  }]
+}
+
+// Activates a phone number for Cloud API messaging (used right after Embedded Signup). Meta
+// treats "verified via SMS/voice OTP during signup" and "registered for the Cloud API" as two
+// separate steps — a newly-added number can complete signup successfully and still be unable
+// to send/receive until this call succeeds. Also sets the number's two-step-verification PIN.
+async function registerPhoneNumber({ phoneNumberId, accessToken, pin }) {
+  await axios.post(`${BASE}/${phoneNumberId}/register`,
+    { messaging_product: 'whatsapp', pin },
+    { headers: { Authorization: `Bearer ${accessToken}` }, timeout: 15000 }
+  )
+}
+
 async function sendMediaMessage({ to, mediaType, mediaUrl, caption = '', config }) {
   const payload = { link: mediaUrl }
   if (caption) payload.caption = caption
@@ -223,6 +263,9 @@ module.exports = {
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,
+  getPhoneNumberOption,
+  registerPhoneNumber,
+  subscribeToWebhooks,
   verifyCredentials,
   getPhoneNumberDetails,
   debugAccessToken,
