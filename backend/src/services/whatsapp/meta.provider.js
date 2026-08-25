@@ -253,12 +253,23 @@ async function getMediaUrl(mediaId, config) {
   return { url: data.url, mimeType: data.mime_type }
 }
 
+// Downloads an inbound media's actual bytes. Meta's media URLs are short-lived AND require the
+// same Bearer token to fetch the binary — a browser <img src> can't attach that header, so the
+// caller must download here and re-host the bytes somewhere publicly reachable (e.g. ImageKit).
+async function downloadMedia(mediaId, config) {
+  const client = getClient(config)
+  const { url, mime_type: mimeType } = (await client.get(`/${mediaId}`)).data
+  const { data: buffer } = await client.get(url, { responseType: 'arraybuffer' })
+  return { buffer: Buffer.from(buffer), mimeType }
+}
+
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
   sendMediaMessage,
   getMessageStatus,
   getMediaUrl,
+  downloadMedia,
   submitTemplate,
   fetchTemplates,
   exchangeCodeForToken,

@@ -125,12 +125,18 @@ async function getMediaUrl(mediaId, config) {
   return { url: `https://mock-cdn.example.com/media/${mediaId}`, mimeType: 'image/jpeg' }
 }
 
+async function downloadMedia(mediaId, config) {
+  await delay(100)
+  return { buffer: Buffer.from('mock-media'), mimeType: 'image/jpeg' }
+}
+
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
   sendMediaMessage,
   getMessageStatus,
   getMediaUrl,
+  downloadMedia,
   submitTemplate,
   fetchTemplates,
   exchangeCodeForToken,

@@ -11,6 +11,7 @@ const { getIO } = require('../config/socket')
 const { handleTemplateStatusWebhook } = require('../controllers/template.controller')
 const waService = require('../services/whatsapp/whatsapp.service')
 const { normalizePhone } = require('../utils/phone')
+const imagekit = require('../utils/imagekit')
 
 // ── Opt-out keywords (Meta policy — must honor STOP/UNSUBSCRIBE) ──────────────
 const OPT_OUT_KEYWORDS = new Set(['stop', 'unsubscribe', 'optout', 'opt out', 'cancel', 'quit', 'end', 'block'])
@@ -194,7 +195,20 @@ async function handleMessage(msg, tenantId) {
     if (mediaType && mediaId) {
       msgMediaType = mediaType
       msgText      = caption || `[${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}]`
-      msgMediaUrl  = mediaId // Meta media ID — retrieve URL via GET /conversations/media/:mediaId
+      // Meta's media URLs are short-lived and require the Bearer token to fetch the bytes —
+      // unusable directly in an <img src>. Re-host on ImageKit (same as outbound media) so the
+      // stored URL is a plain, publicly-fetchable link the frontend can render without auth.
+      try {
+        const { buffer } = await waService.downloadMedia(tenantId, mediaId)
+        const uploaded = await imagekit.upload({
+          file: buffer,
+          fileName: `${Date.now()}-${mediaId}`,
+          folder: '/whatsapp-media',
+        })
+        msgMediaUrl = uploaded.url
+      } catch (err) {
+        console.error('[Webhook] Failed to download/re-host inbound media:', err.message)
+      }
     } else if (!text) {
       msgText = '[message]'
     }
