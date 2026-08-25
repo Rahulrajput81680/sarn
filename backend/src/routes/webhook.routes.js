@@ -253,7 +253,7 @@ async function handleStatus(status, tenantId) {
 
     if (msg) {
       getIO()
-        .to(`conv:${msg.conversation}`)
+        .to(`tenant:${tenantId}`)
         .emit('message_status', { messageId: msg._id, waMessageId: status.id, status: mapped, error: msg.error })
 
       if (msg.campaign) {
