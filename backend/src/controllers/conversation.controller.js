@@ -10,6 +10,7 @@ const { success } = require('../utils/apiResponse')
 const waService = require('../services/whatsapp/whatsapp.service')
 const { translateMetaError } = require('../utils/metaErrors')
 const { mimeToMediaType } = require('../utils/multerConfig')
+const imagekit = require('../utils/imagekit')
 const { checkWAConnected } = require('../utils/waGuard')
 const { normalizePhone } = require('../utils/phone')
 
@@ -325,8 +326,18 @@ const sendMediaMessage = asyncHandler(async (req, res) => {
 
   const mediaType = mimeToMediaType(req.file.mimetype)
   const caption   = req.body.caption || ''
-  const backendUrl = process.env.APP_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`
-  const publicUrl  = `${backendUrl}/uploads/media/${req.file.filename}`
+
+  let publicUrl
+  try {
+    const uploaded = await imagekit.upload({
+      file: req.file.buffer,
+      fileName: `${Date.now()}-${req.file.originalname}`,
+      folder: '/whatsapp-media',
+    })
+    publicUrl = uploaded.url
+  } catch (err) {
+    return res.status(502).json({ success: false, message: 'Failed to upload file. Please try again.' })
+  }
 
   let waMessageId = null
   let status = 'sent'

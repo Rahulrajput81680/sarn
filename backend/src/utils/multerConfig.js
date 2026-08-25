@@ -1,6 +1,4 @@
 const multer = require('multer')
-const path   = require('path')
-const crypto = require('crypto')
 
 const ALLOWED_MIME = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
@@ -19,19 +17,11 @@ function mimeToMediaType(mime) {
   return 'document'
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../../uploads/media'))
-  },
-  filename: (req, file, cb) => {
-    const rand = crypto.randomBytes(12).toString('hex')
-    const ext  = path.extname(file.originalname).toLowerCase()
-    cb(null, `${rand}${ext}`)
-  },
-})
-
 const mediaUpload = multer({
-  storage,
+  // In-memory — the buffer is uploaded straight to ImageKit (see imagekit.js), never written to
+  // local disk. Render's disk is ephemeral (wiped on every redeploy), so disk storage here would
+  // silently break media Meta hadn't fetched yet by the time of the next deploy.
+  storage: multer.memoryStorage(),
   limits: { fileSize: 16 * 1024 * 1024 }, // 16 MB — WhatsApp limit
   fileFilter: (req, file, cb) => {
     if (ALLOWED_MIME.has(file.mimetype)) return cb(null, true)
