@@ -909,14 +909,6 @@ export default function Inbox() {
     }
   }, [token])
 
-  // Join/leave the active conversation's room independently of the socket
-  // connection lifecycle above.
-  useEffect(() => {
-    if (!activeId) return
-    socket.emit('join_conversation', activeId)
-    return () => socket.emit('leave_conversation', activeId)
-  }, [activeId])
-
   useEffect(() => { msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
 
   const filteredConvs = convs.filter((c) => {

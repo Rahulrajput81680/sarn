@@ -140,8 +140,8 @@ async function handleMessage(msg, tenantId) {
         })
         const io = getIO()
         io.to(`tenant:${tenantId}`).emit('new_conversation_message', { conversationId: conv._id, message: inMsg, contact })
-        io.to(`conv:${conv._id}`).emit('new_message', { message: inMsg })
-        io.to(`conv:${conv._id}`).emit('new_message', { message: sysMsg })
+        io.to(`tenant:${tenantId}`).emit('new_message', { message: inMsg })
+        io.to(`tenant:${tenantId}`).emit('new_message', { message: sysMsg })
       }
 
       await WebhookLog.create({
@@ -173,8 +173,8 @@ async function handleMessage(msg, tenantId) {
           })
           const io = getIO()
           io.to(`tenant:${tenantId}`).emit('new_conversation_message', { conversationId: conv._id, message: inMsg, contact })
-          io.to(`conv:${conv._id}`).emit('new_message', { message: inMsg })
-          io.to(`conv:${conv._id}`).emit('new_message', { message: sysMsg })
+          io.to(`tenant:${tenantId}`).emit('new_message', { message: inMsg })
+          io.to(`tenant:${tenantId}`).emit('new_message', { message: sysMsg })
         }
 
         await WebhookLog.create({
@@ -214,7 +214,7 @@ async function handleMessage(msg, tenantId) {
 
     const io = getIO()
     io.to(`tenant:${tenantId}`).emit('new_conversation_message', { conversationId: conv._id, message, contact })
-    io.to(`conv:${conv._id}`).emit('new_message', { message })
+    io.to(`tenant:${tenantId}`).emit('new_message', { message })
 
     await WebhookLog.create({
       tenant: tenantId, event: 'messages.received', status: 'success', code: 200,

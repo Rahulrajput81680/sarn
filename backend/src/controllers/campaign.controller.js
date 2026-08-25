@@ -129,7 +129,7 @@ async function processCampaignSend(campaign, tenantId, contacts) {
           })
           const io = getIO()
           io.to(`tenant:${tenantId}`).emit('new_conversation_message', { conversationId: conv._id, message, contact })
-          io.to(`conv:${conv._id}`).emit('new_message', { message })
+          io.to(`tenant:${tenantId}`).emit('new_message', { message })
         }
       }
 

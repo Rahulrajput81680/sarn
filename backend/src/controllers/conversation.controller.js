@@ -130,7 +130,10 @@ const sendMessage = asyncHandler(async (req, res) => {
     updatedAt: new Date(),
   })
 
-  getIO().to(`conv:${conv._id}`).emit('new_message', { message: populated })
+  // Broadcast tenant-wide (not just to whoever has this specific conversation open) so the
+  // conversation list's unread badge / last-message preview updates instantly for a chat the
+  // agent isn't currently viewing — every socket for this tenant already auto-joins this room.
+  getIO().to(`tenant:${req.tenantId}`).emit('new_message', { message: populated })
 
   return success(res, { message: populated }, 'Message sent', 201)
 })
@@ -202,7 +205,7 @@ const simulateIncoming = asyncHandler(async (req, res) => {
 
   const io = getIO()
   io.to(`tenant:${req.tenantId}`).emit('new_conversation_message', { conversationId: conv._id, message: msg, contact })
-  io.to(`conv:${conv._id}`).emit('new_message', { message: msg })
+  io.to(`tenant:${req.tenantId}`).emit('new_message', { message: msg })
 
   return success(res, { message: msg, conversation: conv, contact }, 'Incoming message simulated')
 })
@@ -361,7 +364,7 @@ const sendMediaMessage = asyncHandler(async (req, res) => {
     updatedAt:   new Date(),
   })
 
-  getIO().to(`conv:${conv._id}`).emit('new_message', { message: populated })
+  getIO().to(`tenant:${req.tenantId}`).emit('new_message', { message: populated })
 
   return success(res, { message: populated }, 'Media sent', 201)
 })
