@@ -32,6 +32,11 @@ async function getMediaUrl(tenantId, mediaId) {
   return provider.getMediaUrl(mediaId, config)
 }
 
+async function downloadMedia(tenantId, mediaId) {
+  const config = await getTenantWAConfig(tenantId)
+  return provider.downloadMedia(mediaId, config)
+}
+
 // ── Template management ───────────────────────────────────────────────────────
 
 async function submitTemplate(tenantId, opts) {
@@ -122,6 +127,7 @@ module.exports = {
   sendTemplateMessage,
   sendMediaMessage,
   getMediaUrl,
+  downloadMedia,
   submitTemplate,
   fetchTemplates,
   exchangeCodeForToken,

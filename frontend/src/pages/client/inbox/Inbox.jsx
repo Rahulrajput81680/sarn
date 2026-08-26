@@ -933,14 +933,14 @@ export default function Inbox() {
     form.append('file', mediaFile.file)
     if (replyText.trim()) form.append('caption', replyText.trim())
     try {
-      const { data } = await axiosInstance.post(
+      // Don't append the message here — the socket's `new_message` broadcast (tenant-wide, so
+      // it reaches the sender's own client too) already does that. Appending in both places is
+      // what caused the duplicate-key warning: the same message landing in state twice.
+      await axiosInstance.post(
         `/api/v1/conversations/${activeId}/messages/media`,
         form,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       )
-      const newMsg = normalizeMsg(data.data.message)
-      setMessages(m => ({ ...m, [activeId]: [...(m[activeId] || []), newMsg] }))
-      setConvs(cs => cs.map(c => c.id === activeId ? { ...c, lastMsg: newMsg.text } : c))
       setMediaFile(null)
       setReplyText('')
     } catch (err) {
