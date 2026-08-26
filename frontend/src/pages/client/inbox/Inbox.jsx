@@ -1295,12 +1295,12 @@ export default function Inbox() {
                             transition={{ duration: 0.18, ease: EASE_OUT }}
                             className="absolute bottom-full left-0 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[190px] z-30"
                           >
-                            <button
+                            {/* <button
                               onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false) }}
                               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                             >
                               <Paperclip size={13} className="text-gray-400" /> Attach file
-                            </button>
+                            </button> */}
                             <button
                               onClick={() => {
                                 setShowNewConv({ _id: conv.contactId, name: conv.name, phone: conv.phone, isOptedIn: true })
