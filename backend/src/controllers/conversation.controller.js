@@ -329,9 +329,17 @@ const sendMediaMessage = asyncHandler(async (req, res) => {
 
   let publicUrl
   try {
+    const ext  = path.extname(req.file.originalname)
+    const base = path.basename(req.file.originalname, ext)
+      .normalize('NFKD')
+      .replace(/[^\x00-\x7F]/g, '')
+      .replace(/[^a-zA-Z0-9._-]+/g, '_')
+      .slice(0, 100) || 'file'
+    const safeName = `${base}${ext.replace(/[^a-zA-Z0-9.]/g, '')}`
+
     const uploaded = await imagekit.upload({
       file: req.file.buffer,
-      fileName: `${Date.now()}-${req.file.originalname}`,
+      fileName: `${Date.now()}-${safeName}`,
       folder: '/whatsapp-media',
     })
     publicUrl = uploaded.url
