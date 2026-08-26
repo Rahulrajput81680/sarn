@@ -27,6 +27,7 @@ const updateProfile = asyncHandler(async (req, res) => {
   allowedFields.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f] })
 
   const user = await User.findByIdAndUpdate(req.user._id, updates, { new: true, runValidators: true })
+    .populate('tenant', 'name plan limits usage whatsapp tosAccepted tosAcceptedAt')
   return success(res, { user }, 'Profile updated')
 })
 

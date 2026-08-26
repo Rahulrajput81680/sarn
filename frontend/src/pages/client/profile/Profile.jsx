@@ -69,7 +69,7 @@ export default function Profile() {
   })
 
   const [waProfile, setWaProfile] = useState({
-    displayName:   user?.waDisplayName  || '',
+    waDisplayName: user?.waDisplayName  || '',
     waCategory:    user?.waCategory     || '',
     waDescription: user?.waDescription  || '',
   })
@@ -95,7 +95,7 @@ export default function Profile() {
         address:      u.address      || '',
       })
       setWaProfile({
-        displayName:   u.waDisplayName  || '',
+        waDisplayName: u.waDisplayName  || '',
         waCategory:    u.waCategory     || '',
         waDescription: u.waDescription  || '',
       })
@@ -324,8 +324,8 @@ export default function Profile() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Display Name"
-            value={waProfile.displayName}
-            onChange={e => setWaProfile(w => ({ ...w, displayName: e.target.value }))}
+            value={waProfile.waDisplayName}
+            onChange={e => setWaProfile(w => ({ ...w, waDisplayName: e.target.value }))}
             placeholder="Name shown in customer chats"
             hint="Visible to every customer you message"
           />
