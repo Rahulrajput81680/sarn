@@ -61,6 +61,11 @@ async function submitTemplate({ name, category, language, components, config }) 
   return { metaTemplateId: `mock_tpl_${uuidv4()}`, status: 'PENDING' }
 }
 
+async function uploadTemplateHeaderMedia({ buffer, mimeType, fileName, config }) {
+  await delay(300)
+  return { headerHandle: `mock_header_handle_${uuidv4()}` }
+}
+
 async function fetchTemplates(config) {
   await delay(100)
   return [] // Mock: no templates fetched from "Meta"
@@ -138,6 +143,7 @@ module.exports = {
   getMediaUrl,
   downloadMedia,
   submitTemplate,
+  uploadTemplateHeaderMedia,
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,

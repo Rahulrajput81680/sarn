@@ -6,6 +6,8 @@ const { success }  = require('../utils/apiResponse')
 const waService    = require('../services/whatsapp/whatsapp.service')
 const { checkWAConnected } = require('../utils/waGuard')
 const { sendEmail, newTemplateSubmittedEmail, templateApprovedEmail, templateRejectedEmail } = require('../utils/emailService')
+const { translateMetaError } = require('../utils/metaErrors')
+const { validateTemplateComponents } = require('../utils/templateValidation')
 
 // Submits a template to Meta for real review. Shared by the tenant-facing submit action and
 // the admin's manual retry/override action, so the Meta-submission handling (WABA connection
@@ -98,10 +100,14 @@ const createTemplate = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Name, category, and components are required' })
   }
 
+  const upperCategory = category.toUpperCase()
+  const check = validateTemplateComponents({ category: upperCategory, components })
+  if (!check.ok) return res.status(400).json({ success: false, message: check.message })
+
   const template = await Template.create({
     tenant:     req.tenantId,
     name:       name.toLowerCase().replace(/\s+/g, '_'),
-    category:   category.toUpperCase(),
+    category:   upperCategory,
     language:   language || 'en',
     components,
     status:     'DRAFT',
@@ -111,6 +117,9 @@ const createTemplate = asyncHandler(async (req, res) => {
 })
 
 // ── PUT /api/v1/templates/:id ─────────────────────────────────────────────────
+// Explicit field allowlist — never trust req.body wholesale (a stray `tenant` key would
+// otherwise reassign ownership; `status`/`metaTemplateId`/`rejectionNote` etc. must stay
+// server-controlled).
 const updateTemplate = asyncHandler(async (req, res) => {
   const template = await Template.findOne({ _id: req.params.id, tenant: req.tenantId })
   if (!template) return res.status(404).json({ success: false, message: 'Template not found' })
@@ -118,10 +127,37 @@ const updateTemplate = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Approved templates cannot be edited' })
   }
 
-  Object.assign(template, req.body)
+  const { name, category, language, components } = req.body
+  if (name !== undefined)       template.name = name.toLowerCase().replace(/\s+/g, '_')
+  if (category !== undefined)   template.category = category.toUpperCase()
+  if (language !== undefined)   template.language = language
+  if (components !== undefined) template.components = components
+
+  const check = validateTemplateComponents({ category: template.category, components: template.components })
+  if (!check.ok) return res.status(400).json({ success: false, message: check.message })
+
   template.status = 'DRAFT'
   await template.save()
   return success(res, { template }, 'Template updated')
+})
+
+// ── POST /api/v1/templates/header-media ───────────────────────────────────────
+// Uploads header media (image/video/document) to Meta's Resumable Upload API and returns a
+// header_handle to embed in the template's HEADER component example — Meta template media does
+// NOT accept arbitrary public URLs, only a handle from its own upload session, and the handle is
+// short-lived (~24h), so this is called at file-select time in the create/edit form.
+const uploadTemplateHeaderMedia = asyncHandler(async (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' })
+  try {
+    const { headerHandle } = await waService.uploadTemplateHeaderMedia(req.tenantId, {
+      buffer:   req.file.buffer,
+      mimeType: req.file.mimetype,
+      fileName: req.file.originalname,
+    })
+    return success(res, { headerHandle }, 'Header media uploaded')
+  } catch (err) {
+    return res.status(502).json({ success: false, message: translateMetaError(err) })
+  }
 })
 
 // ── DELETE /api/v1/templates/:id ──────────────────────────────────────────────
@@ -190,11 +226,19 @@ const syncTemplatesFromMeta = asyncHandler(async (req, res) => {
       text:      c.text   || '',
       variables: (c.example?.body_text?.[0] || []).map((_, i) => String(i + 1)),
       example:   c.example || null,
+      // AUTHENTICATION-category flags — dropping these on sync would make an OTP-send call unable
+      // to tell what the approved template actually looks like.
+      add_security_recommendation: c.add_security_recommendation,
+      code_expiration_minutes:     c.code_expiration_minutes,
       buttons:   (c.buttons || []).map(b => ({
         type:         b.type         || '',
         text:         b.text         || '',
         url:          b.url          || '',
         phone_number: b.phone_number || '',
+        otp_type:                b.otp_type,
+        autofill_text:           b.autofill_text,
+        supported_apps:          b.supported_apps,
+        zero_tap_terms_accepted: b.zero_tap_terms_accepted,
       })),
     }))
 
@@ -353,4 +397,5 @@ module.exports = {
   syncTemplatesFromMeta,
   reconcileTemplateStatuses,
   handleTemplateStatusWebhook,
+  uploadTemplateHeaderMedia,
 }

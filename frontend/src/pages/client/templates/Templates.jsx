@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -37,6 +37,12 @@ const BTN_TYPES = [
 
 const LANGUAGES = ['English', 'Hindi', 'Gujarati', 'Marathi', 'Tamil', 'Telugu', 'Kannada', 'Bengali']
 
+const OTP_TYPES = [
+  { key: 'COPY_CODE', label: 'Copy Code',          desc: 'User taps a button to copy the code' },
+  { key: 'ONE_TAP',    label: 'One-Tap Autofill',   desc: 'Auto-fills the code in your app' },
+  { key: 'ZERO_TAP',   label: 'Zero-Tap Autofill',  desc: 'Auto-submits with no user action' },
+]
+
 const STATUS_TABS = ['all', 'approved', 'pending', 'draft', 'rejected']
 
 const STATUS_STYLE = {
@@ -52,14 +58,33 @@ const LANG_TO_CODE = { English: 'en', Hindi: 'hi', Gujarati: 'gu', Marathi: 'mr'
 const CODE_TO_LANG = Object.fromEntries(Object.entries(LANG_TO_CODE).map(([k, v]) => [v, k]))
 const MEDIA_TYPES  = ['IMAGE', 'VIDEO', 'DOCUMENT']
 
+const BLANK_AUTH = {
+  codeExpirationMinutes: 10,
+  addSecurityRecommendation: true,
+  otpType: 'COPY_CODE',
+  buttonText: '',
+  autofillText: '',
+  supportedApps: [{ packageName: '', signatureHash: '' }],
+  zeroTapTermsAccepted: false,
+}
+
 function flatToComponents(form) {
+  if (form.category === 'authentication') return buildAuthComponents(form.authConfig)
+
   const comps = []
   if (form.header?.type && form.header.type !== 'none') {
     if (form.header.type === 'text') {
-      comps.push({ type: 'HEADER', format: 'TEXT', text: form.header.text || '' })
+      const headerComp = { type: 'HEADER', format: 'TEXT', text: form.header.text || '' }
+      if (countVars(form.header.text || '') > 0) {
+        headerComp.example = { header_text: [form.sampleValues?.header || ''] }
+      }
+      comps.push(headerComp)
     } else {
-      // IMAGE | VIDEO | DOCUMENT — Meta requires format field, no text
-      comps.push({ type: 'HEADER', format: form.header.type.toUpperCase() })
+      // IMAGE | VIDEO | DOCUMENT — Meta requires format field + a header_handle example
+      // from the Resumable Upload API (see the header-media upload flow), not arbitrary URLs.
+      const headerComp = { type: 'HEADER', format: form.header.type.toUpperCase() }
+      if (form.header.headerHandle) headerComp.example = { header_handle: [form.header.headerHandle] }
+      comps.push(headerComp)
     }
   }
   if (form.body) {
@@ -86,22 +111,73 @@ function flatToComponents(form) {
   return comps
 }
 
-function componentsToFlat(components = []) {
+// AUTHENTICATION templates have a fixed shape — Meta auto-generates the BODY/FOOTER copy from
+// these flags, and the only allowed BUTTONS entry is a single OTP button. No HEADER, no free text.
+function buildAuthComponents(auth = {}) {
+  const comps = [
+    { type: 'BODY', add_security_recommendation: !!auth.addSecurityRecommendation },
+    { type: 'FOOTER', code_expiration_minutes: Number(auth.codeExpirationMinutes) || 10 },
+  ]
+  const btn = { type: 'OTP', otp_type: auth.otpType || 'COPY_CODE' }
+  if (auth.buttonText) btn.text = auth.buttonText
+  if (['ONE_TAP', 'ZERO_TAP'].includes(btn.otp_type)) {
+    if (auth.autofillText) btn.autofill_text = auth.autofillText
+    const apps = (auth.supportedApps || [])
+      .filter((a) => a.packageName?.trim() && a.signatureHash?.trim())
+      .map((a) => ({ package_name: a.packageName.trim(), signature_hash: a.signatureHash.trim() }))
+    if (apps.length) btn.supported_apps = apps
+  }
+  if (btn.otp_type === 'ZERO_TAP') btn.zero_tap_terms_accepted = !!auth.zeroTapTermsAccepted
+  comps.push({ type: 'BUTTONS', buttons: [btn] })
+  return comps
+}
+
+function componentsToFlat(components = [], category) {
+  if (category === 'AUTHENTICATION') {
+    const b   = components.find((c) => c.type === 'BODY')
+    const f   = components.find((c) => c.type === 'FOOTER')
+    const bt  = components.find((c) => c.type === 'BUTTONS')
+    const btn = bt?.buttons?.[0] || {}
+    const supportedApps = (btn.supported_apps || []).map((a) => ({
+      packageName: a.package_name || '', signatureHash: a.signature_hash || '',
+    }))
+    return {
+      header: { type: 'none', text: '', url: '', headerHandle: '', previewUrl: '' },
+      body: '', footer: '', buttons: [], sampleValues: {},
+      authConfig: {
+        codeExpirationMinutes: f?.code_expiration_minutes ?? 10,
+        addSecurityRecommendation: b?.add_security_recommendation ?? true,
+        otpType: btn.otp_type || 'COPY_CODE',
+        buttonText: btn.text || '',
+        autofillText: btn.autofill_text || '',
+        supportedApps: supportedApps.length ? supportedApps : [{ packageName: '', signatureHash: '' }],
+        zeroTapTermsAccepted: !!btn.zero_tap_terms_accepted,
+      },
+    }
+  }
+
   const h  = components.find((c) => c.type === 'HEADER')
   const b  = components.find((c) => c.type === 'BODY')
   const f  = components.find((c) => c.type === 'FOOTER')
   const bt = components.find((c) => c.type === 'BUTTONS')
-  let header = { type: 'none', text: '', url: '' }
+  let header = { type: 'none', text: '', url: '', headerHandle: '', previewUrl: '' }
   if (h) {
     // prefer h.format (Meta's field); fall back to reading h.text for old records
     const fmt = (h.format || h.text || '').toUpperCase()
     const isMedia = MEDIA_TYPES.includes(fmt)
-    header = { type: isMedia ? fmt.toLowerCase() : 'text', text: isMedia ? '' : (h.text || ''), url: '' }
+    header = {
+      type: isMedia ? fmt.toLowerCase() : 'text',
+      text: isMedia ? '' : (h.text || ''),
+      url: '',
+      headerHandle: isMedia ? (h.example?.header_handle?.[0] || '') : '',
+      previewUrl: '',
+    }
   }
   const sampleValues = {}
   if (b?.example?.body_text?.[0]) {
     b.example.body_text[0].forEach((val, i) => { sampleValues[i + 1] = val })
   }
+  if (h?.example?.header_text?.[0]) sampleValues.header = h.example.header_text[0]
   return {
     header,
     body: b?.text || '',
@@ -112,18 +188,20 @@ function componentsToFlat(components = []) {
       value: btn.url || btn.phone_number || btn.phoneNumber || '',  // handle both cases
     })) || [],
     sampleValues,
+    authConfig: { ...BLANK_AUTH, supportedApps: [{ packageName: '', signatureHash: '' }] },
   }
 }
 
 function normalizeTemplate(t) {
-  const { header, body, footer, buttons, sampleValues } = componentsToFlat(t.components || [])
+  const category = (t.category || 'MARKETING').toUpperCase()
+  const { header, body, footer, buttons, sampleValues, authConfig } = componentsToFlat(t.components || [], category)
   return {
     id: t._id || t.id,
     name: t.name,
-    category: (t.category || 'MARKETING').toLowerCase(),
+    category: category.toLowerCase(),
     language: CODE_TO_LANG[t.language] || t.language || 'English',
     status: (t.status || 'DRAFT').toLowerCase(),
-    header, body, footer, buttons, sampleValues,
+    header, body, footer, buttons, sampleValues, authConfig,
     updatedAt: t.updatedAt ? new Date(t.updatedAt).toLocaleDateString() : '',
     usedIn: t.usageCount || 0,
     rejectionReason: t.rejectionReason || null,
@@ -142,7 +220,52 @@ function insertVariable(text, setText, varNum) {
 
 /* ─── WhatsApp preview ───────────────────────────────────── */
 
+function AuthPreviewShell({ children }) {
+  return (
+    <div className="sticky top-4">
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Live Preview</p>
+      <div className="mx-auto w-56 bg-gray-800 rounded-3xl p-2 shadow-xl">
+        <div className="bg-[#e5ddd5] rounded-2xl overflow-hidden">
+          <div className="bg-[#075e54] px-3 py-2 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-green-400 flex items-center justify-center">
+              <span className="text-white text-xs font-bold">SC</span>
+            </div>
+            <p className="text-white text-xs font-medium flex-1">SarnConnect</p>
+          </div>
+          <div className="p-2 min-h-[200px]">
+            <div className="bg-white rounded-xl overflow-hidden shadow-sm max-w-[200px]">{children}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function WaPreview({ form }) {
+  if (form.category === 'authentication') {
+    const a = form.authConfig || {}
+    return (
+      <AuthPreviewShell>
+        <div className="px-3 py-2">
+          <p className="text-xs text-gray-800 leading-relaxed">
+            <strong>123456</strong> is your verification code.
+            {a.addSecurityRecommendation ? ' For your security, do not share this code.' : ''}
+            {a.codeExpirationMinutes ? ` This code expires in ${a.codeExpirationMinutes} minutes.` : ''}
+          </p>
+        </div>
+        <div className="px-3 pb-2 flex justify-end">
+          <span className="text-xs text-gray-300">10:24 AM ✓✓</span>
+        </div>
+        <div className="border-t border-gray-100">
+          <div className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-[#128c7e]">
+            <Copy size={10} />
+            {a.otpType === 'COPY_CODE' ? (a.buttonText || 'Copy Code') : (a.buttonText || 'Autofill')}
+          </div>
+        </div>
+      </AuthPreviewShell>
+    )
+  }
+
   const resolvedBody = (form.body || '')
     .replace(/\{\{1\}\}/g, 'John')
     .replace(/\{\{2\}\}/g, '#ORD-4821')
@@ -176,9 +299,13 @@ function WaPreview({ form }) {
                 </div>
               )}
               {form.header?.type === 'image' && (
-                <div className="w-full h-20 bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
-                  <Image size={24} className="text-green-400" />
-                </div>
+                form.header.previewUrl ? (
+                  <img src={form.header.previewUrl} alt="" className="w-full h-20 object-cover" />
+                ) : (
+                  <div className="w-full h-20 bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center">
+                    <Image size={24} className="text-green-400" />
+                  </div>
+                )
               )}
               {form.header?.type === 'video' && (
                 <div className="w-full h-20 bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
@@ -237,10 +364,11 @@ function WaPreview({ form }) {
 
 const BLANK = {
   name: '', category: 'marketing', language: 'English',
-  header: { type: 'none', text: '', url: '' },
+  header: { type: 'none', text: '', url: '', headerHandle: '', previewUrl: '' },
   body: '', footer: '',
   buttons: [],
   sampleValues: {},
+  authConfig: { ...BLANK_AUTH, supportedApps: [{ packageName: '', signatureHash: '' }] },
 }
 
 function countVars(text) {
@@ -249,16 +377,75 @@ function countVars(text) {
   return Math.max(0, ...nums, 0)
 }
 
+// Meta requires {{1}}, {{2}}, {{3}}... with no gaps — {{1}} + {{3}} without {{2}} gets rejected.
+function findVarGap(text) {
+  const nums = [...new Set((text.match(/\{\{\d+\}\}/g) || []).map((m) => parseInt(m.replace(/[{}]/g, ''), 10)))].sort((a, b) => a - b)
+  for (let i = 0; i < nums.length; i++) {
+    if (nums[i] !== i + 1) return true
+  }
+  return false
+}
+
+function getValidationErrors(form) {
+  const errors = []
+  if (!form.name.trim()) errors.push('Template name is required.')
+
+  if (form.category === 'authentication') {
+    const a = form.authConfig || {}
+    if (!a.codeExpirationMinutes || a.codeExpirationMinutes < 1 || a.codeExpirationMinutes > 90) {
+      errors.push('Code expiration must be between 1 and 90 minutes.')
+    }
+    if (['ONE_TAP', 'ZERO_TAP'].includes(a.otpType)) {
+      const hasApp = (a.supportedApps || []).some((app) => app.packageName?.trim() && app.signatureHash?.trim())
+      if (!hasApp) errors.push('At least one supported app (package name + signature hash) is required for this OTP type.')
+    }
+    if (a.otpType === 'ZERO_TAP' && !a.zeroTapTermsAccepted) {
+      errors.push('You must accept the zero-tap terms to use Zero-Tap autofill.')
+    }
+    return errors
+  }
+
+  if (!form.body.trim()) errors.push('Body text is required.')
+  if (form.body.length > 1024) errors.push('Body text must be 1024 characters or fewer.')
+  if (findVarGap(form.body)) errors.push('Body variables must be sequential starting at {{1}} with no gaps.')
+
+  if (form.header?.type === 'text') {
+    if (form.header.text.length > 60) errors.push('Header text must be 60 characters or fewer.')
+    if (findVarGap(form.header.text)) errors.push('Header can only use a single {{1}} variable.')
+    if (countVars(form.header.text) > 0 && !form.sampleValues?.header?.trim()) {
+      errors.push('Header variable requires a sample value.')
+    }
+  }
+  if (['image', 'video', 'document'].includes(form.header?.type)) {
+    if (form.header.uploading) errors.push('Header media is still uploading.')
+    if (!form.header.headerHandle) errors.push('Upload header media before saving.')
+  }
+  if (form.footer && form.footer.length > 60) errors.push('Footer text must be 60 characters or fewer.')
+
+  return errors
+}
+
 function TemplateDrawer({ template, onSave, onClose }) {
   const [form, setForm] = useState(
     template
-      ? { name: template.name, category: template.category, language: template.language, header: { ...template.header }, body: template.body, footer: template.footer, buttons: template.buttons.map((b) => ({ ...b })), sampleValues: template.sampleValues || {} }
-      : { ...BLANK, header: { ...BLANK.header }, buttons: [], sampleValues: {} }
+      ? {
+          name: template.name, category: template.category, language: template.language,
+          header: { headerHandle: '', previewUrl: '', ...template.header },
+          body: template.body, footer: template.footer,
+          buttons: template.buttons.map((b) => ({ ...b })),
+          sampleValues: template.sampleValues || {},
+          authConfig: template.authConfig
+            ? { ...BLANK_AUTH, ...template.authConfig, supportedApps: template.authConfig.supportedApps?.length ? template.authConfig.supportedApps.map((a) => ({ ...a })) : [{ packageName: '', signatureHash: '' }] }
+            : { ...BLANK_AUTH, supportedApps: [{ packageName: '', signatureHash: '' }] },
+        }
+      : { ...BLANK, header: { ...BLANK.header }, buttons: [], sampleValues: {}, authConfig: { ...BLANK_AUTH, supportedApps: [{ packageName: '', signatureHash: '' }] } }
   )
   const [showBtnPicker, setShowBtnPicker] = useState(false)
+  const headerFileRef = useRef(null)
 
   const setField = (key, val) => setForm((f) => ({ ...f, [key]: val }))
   const setHeader = (key, val) => setForm((f) => ({ ...f, header: { ...f.header, [key]: val } }))
+  const setAuthField = (key, val) => setForm((f) => ({ ...f, authConfig: { ...f.authConfig, [key]: val } }))
   const setBtn = (i, key, val) => {
     const btns = [...form.buttons]
     btns[i] = { ...btns[i], [key]: val }
@@ -274,9 +461,47 @@ function TemplateDrawer({ template, onSave, onClose }) {
     btns.splice(i, 1)
     setField('buttons', btns)
   }
+  const setSupportedApp = (i, key, val) => {
+    const apps = [...form.authConfig.supportedApps]
+    apps[i] = { ...apps[i], [key]: val }
+    setAuthField('supportedApps', apps)
+  }
+  const addSupportedApp = () => setAuthField('supportedApps', [...form.authConfig.supportedApps, { packageName: '', signatureHash: '' }])
+  const removeSupportedApp = (i) => {
+    const apps = [...form.authConfig.supportedApps]
+    apps.splice(i, 1)
+    setAuthField('supportedApps', apps.length ? apps : [{ packageName: '', signatureHash: '' }])
+  }
+
+  const handleHeaderMediaSelect = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setHeader('previewUrl', file.type.startsWith('image/') ? URL.createObjectURL(file) : '')
+    setHeader('headerHandle', '')
+    setHeader('uploading', true)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const { data } = await api.post('/api/v1/templates/header-media', body, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setHeader('headerHandle', data.data.headerHandle)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to upload header media')
+    } finally {
+      setHeader('uploading', false)
+    }
+  }
 
   const varCount = countVars(form.body)
-  const valid = form.name.trim() && form.body.trim()
+  const validationErrors = getValidationErrors(form)
+  const valid = validationErrors.length === 0
+  // Drafts are a work-in-progress scratchpad — only require what's always required (name, and
+  // body for non-auth categories, matching the original pre-validation behavior). The full
+  // Meta-compliance checks above (char limits, sequential vars, uploaded media, auth completeness)
+  // only gate actually submitting to Meta, not saving progress.
+  const canSaveDraft = form.name.trim() && (form.category === 'authentication' || form.body.trim())
 
   return createPortal(
     <motion.div className="fixed inset-0 z-50 flex" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
@@ -343,6 +568,101 @@ function TemplateDrawer({ template, onSave, onClose }) {
               </div>
             </div>
 
+            {form.category === 'authentication' ? (
+              <div className="space-y-5">
+                <div className="p-4 bg-orange-50 border border-orange-100 rounded-xl">
+                  <p className="text-xs font-semibold text-orange-800 mb-1">Meta-controlled message</p>
+                  <p className="text-xs text-orange-600 leading-relaxed">
+                    Authentication templates have no custom header, body, or footer text — Meta
+                    generates the OTP message copy automatically from the options below.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Code Expiration (minutes)</label>
+                    <input
+                      type="number" min={1} max={90}
+                      value={form.authConfig.codeExpirationMinutes}
+                      onChange={(e) => setAuthField('codeExpirationMinutes', Number(e.target.value))}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                  <div className="flex items-end pb-2">
+                    <label className="flex items-center gap-2 text-xs font-medium text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={form.authConfig.addSecurityRecommendation}
+                        onChange={(e) => setAuthField('addSecurityRecommendation', e.target.checked)}
+                        className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                      />
+                      Add security recommendation
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-2">OTP Delivery Method</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {OTP_TYPES.map((o) => (
+                      <button
+                        key={o.key}
+                        onClick={() => setAuthField('otpType', o.key)}
+                        className={`p-3 rounded-xl border-2 text-left transition-colors ${form.authConfig.otpType === o.key ? 'border-green-400 bg-green-50' : 'border-gray-100 hover:border-gray-200'}`}
+                      >
+                        <p className={`text-xs font-semibold mb-0.5 ${form.authConfig.otpType === o.key ? 'text-green-800' : 'text-gray-700'}`}>{o.label}</p>
+                        <p className="text-xs text-gray-400 leading-relaxed">{o.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {['ONE_TAP', 'ZERO_TAP'].includes(form.authConfig.otpType) && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-semibold text-gray-700">Supported Apps</label>
+                      <button onClick={addSupportedApp} className="flex items-center gap-1 text-xs text-green-600 font-medium hover:text-green-700 transition-colors">
+                        <Plus size={12} /> Add app
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {form.authConfig.supportedApps.map((app, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input
+                            value={app.packageName}
+                            onChange={(e) => setSupportedApp(i, 'packageName', e.target.value)}
+                            placeholder="Package name (e.g. com.yourapp)"
+                            className="flex-1 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-green-500 bg-white font-mono"
+                          />
+                          <input
+                            value={app.signatureHash}
+                            onChange={(e) => setSupportedApp(i, 'signatureHash', e.target.value)}
+                            placeholder="Signature hash"
+                            className="flex-1 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-green-500 bg-white font-mono"
+                          />
+                          <button onClick={() => removeSupportedApp(i)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {form.authConfig.otpType === 'ZERO_TAP' && (
+                  <label className="flex items-start gap-2 text-xs text-gray-700 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <input
+                      type="checkbox"
+                      checked={form.authConfig.zeroTapTermsAccepted}
+                      onChange={(e) => setAuthField('zeroTapTermsAccepted', e.target.checked)}
+                      className="mt-0.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                    />
+                    <span>I understand zero-tap autofill is subject to WhatsApp Business Terms of Service and confirm this app is authorized to use it.</span>
+                  </label>
+                )}
+              </div>
+            ) : (
+              <>
             {/* Header */}
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-2">Header <span className="text-gray-400 font-normal">(optional)</span></label>
@@ -368,19 +688,48 @@ function TemplateDrawer({ template, onSave, onClose }) {
                       className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
                     <p className="text-xs text-gray-400 mt-1">{form.header.text.length}/60</p>
+                    {countVars(form.header.text) > 0 && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-xs font-mono font-semibold text-blue-700 shrink-0">{'{{1}}'}</span>
+                        <input
+                          value={form.sampleValues?.header || ''}
+                          onChange={(e) => setField('sampleValues', { ...form.sampleValues, header: e.target.value })}
+                          placeholder="Sample value for header variable (required for Meta approval)"
+                          className="flex-1 px-2.5 py-1.5 text-xs border border-blue-200 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                      </div>
+                    )}
                   </motion.div>
                 )}
                 {['image', 'video', 'document'].includes(form.header.type) && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.18, ease: EASE_OUT }}>
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
-                      {form.header.type === 'image'    && <Image size={20} className="text-gray-300" />}
-                      {form.header.type === 'video'    && <Video size={20} className="text-gray-300" />}
-                      {form.header.type === 'document' && <File  size={20} className="text-gray-300" />}
-                      <div>
-                        <p className="text-xs font-medium text-gray-600">Upload {form.header.type} or paste URL</p>
-                        <p className="text-xs text-gray-400">Sample shown in preview</p>
+                    <input
+                      ref={headerFileRef}
+                      type="file"
+                      accept={form.header.type === 'image' ? 'image/*' : form.header.type === 'video' ? 'video/*' : 'application/pdf'}
+                      className="hidden"
+                      onChange={handleHeaderMediaSelect}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => headerFileRef.current?.click()}
+                      className="w-full flex items-center gap-3 p-3 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl hover:border-green-300 transition-colors text-left"
+                    >
+                      {form.header.type === 'image'    && <Image size={20} className="text-gray-300 shrink-0" />}
+                      {form.header.type === 'video'    && <Video size={20} className="text-gray-300 shrink-0" />}
+                      {form.header.type === 'document' && <File  size={20} className="text-gray-300 shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-600">
+                          {form.header.uploading ? 'Uploading…' : form.header.headerHandle ? 'Replace file' : `Upload ${form.header.type}`}
+                        </p>
+                        <p className="text-xs text-gray-400 truncate">
+                          {form.header.headerHandle ? 'Ready — used as the header sample for Meta review' : 'Required for Meta approval'}
+                        </p>
                       </div>
-                    </div>
+                      {form.header.previewUrl && form.header.type === 'image' && (
+                        <img src={form.header.previewUrl} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                      )}
+                    </button>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -408,6 +757,7 @@ function TemplateDrawer({ template, onSave, onClose }) {
                 value={form.body}
                 onChange={(e) => setField('body', e.target.value)}
                 placeholder="Hello {{1}}, your order {{2}} is ready!&#10;&#10;Use *bold* for formatting."
+                maxLength={1024}
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 resize-none font-mono"
               />
               <div className="flex items-center justify-between mt-1">
@@ -546,6 +896,8 @@ function TemplateDrawer({ template, onSave, onClose }) {
                 )}
               </div>
             </div>
+              </>
+            )}
           </div>
 
           {/* Preview panel */}
@@ -553,6 +905,13 @@ function TemplateDrawer({ template, onSave, onClose }) {
             <WaPreview form={form} />
           </div>
         </div>
+
+        {/* Validation errors */}
+        {validationErrors.length > 0 && (
+          <div className="px-6 py-2 border-t border-gray-100 bg-red-50/50 shrink-0">
+            <p className="text-xs text-red-600">{validationErrors[0]}</p>
+          </div>
+        )}
 
         {/* Footer actions */}
         <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between gap-3 shrink-0">
@@ -563,7 +922,7 @@ function TemplateDrawer({ template, onSave, onClose }) {
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={() => { onSave({ ...form, status: 'draft' }); onClose() }}
-              disabled={!valid}
+              disabled={!canSaveDraft}
               className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               style={{ transition: 'transform 160ms cubic-bezier(0.23,1,0.32,1)' }}
             >

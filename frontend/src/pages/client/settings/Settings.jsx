@@ -4,6 +4,7 @@ import {
   Shield, Bell, Smartphone, AlertTriangle,
   Eye, EyeOff, Check, LogOut, Trash2,
   CheckCircle2, XCircle, Clock, Unplug,
+  Key, Copy, RefreshCw,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { toast } from 'sonner'
@@ -20,6 +21,7 @@ const TABS = [
   { id: 'account',       label: 'Account',           icon: Shield },
   { id: 'notifications', label: 'Notifications',      icon: Bell },
   { id: 'whatsapp',      label: 'WhatsApp Business',  icon: Smartphone },
+  { id: 'developer',     label: 'API Access',         icon: Key },
   { id: 'danger',        label: 'Danger Zone',        icon: AlertTriangle },
 ]
 
@@ -492,6 +494,110 @@ function WhatsAppTab({ initialWASettings, whatsapp, onWhatsAppChange }) {
   )
 }
 
+/* ───────── TAB: API ACCESS ───────── */
+function DeveloperTab({ apiKeyLastGenerated, onGenerated }) {
+  const [generating, setGenerating] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [newKey, setNewKey] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  const hasExistingKey = !!apiKeyLastGenerated
+
+  const handleGenerate = async () => {
+    setGenerating(true)
+    try {
+      const { data } = await axiosInstance.post('/api/v1/profile/api-key')
+      setNewKey(data.data.apiKey)
+      setConfirming(false)
+      setCopied(false)
+      onGenerated()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to generate API key')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(newKey)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error('Could not copy — select and copy manually')
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionCard
+        title="API Access"
+        description="Authenticate external requests — like triggering an OTP send — from your own backend"
+        delay={0}
+      >
+        <p className="text-xs text-gray-500 leading-relaxed">
+          Use this key to call SarnConnect's API from your own website or server, outside the
+          dashboard. Send it as{' '}
+          <code className="bg-gray-100 px-1 rounded text-gray-700">Authorization: Bearer &lt;key&gt;</code>{' '}
+          or an{' '}
+          <code className="bg-gray-100 px-1 rounded text-gray-700">X-API-Key</code>{' '}
+          header — for example, to send a one-time passcode via <code className="bg-gray-100 px-1 rounded text-gray-700">POST /api/v1/otp/send</code>.
+        </p>
+
+        {newKey ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+              <AlertTriangle size={13} className="shrink-0" />
+              This is the only time you'll see this key. Copy it now — it can't be shown again.
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 text-xs font-mono bg-gray-50 border border-gray-200 rounded-lg overflow-x-auto whitespace-nowrap">
+                {newKey}
+              </code>
+              <Button variant="secondary" size="sm" icon={copied ? <Check size={13} /> : <Copy size={13} />} onClick={handleCopy}>
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 px-3.5 py-3 rounded-lg border bg-gray-50 border-gray-100">
+            <Key size={18} className="text-gray-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-700">
+                {hasExistingKey ? 'API key active' : 'No API key generated yet'}
+              </p>
+              {hasExistingKey && (
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Last generated {new Date(apiKeyLastGenerated).toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {confirming ? (
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-red-600 flex-1">Regenerating invalidates the current key immediately — anything using it will stop working.</p>
+            <Button variant="danger" size="sm" loading={generating} onClick={handleGenerate}>Confirm</Button>
+            <Button variant="secondary" size="sm" onClick={() => setConfirming(false)}>Cancel</Button>
+          </div>
+        ) : (
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              icon={hasExistingKey ? <RefreshCw size={13} /> : <Key size={13} />}
+              loading={generating}
+              onClick={() => hasExistingKey ? setConfirming(true) : handleGenerate()}
+            >
+              {hasExistingKey ? 'Regenerate API Key' : 'Generate API Key'}
+            </Button>
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  )
+}
+
 /* ───────── TAB: DANGER ZONE ───────── */
 function DangerTab() {
   const { logout } = useAuthStore()
@@ -578,6 +684,7 @@ export default function Settings() {
     account:       <AccountTab />,
     notifications: <NotificationsTab initialNotifs={initialNotifs} />,
     whatsapp:      <WhatsAppTab initialWASettings={profile?.waSettings} whatsapp={profile?.tenant?.whatsapp} onWhatsAppChange={fetchProfile} />,
+    developer:     <DeveloperTab apiKeyLastGenerated={profile?.apiKeyLastGenerated} onGenerated={fetchProfile} />,
     danger:        <DangerTab />,
   }
 

@@ -44,6 +44,11 @@ async function submitTemplate(tenantId, opts) {
   return provider.submitTemplate({ ...opts, config })
 }
 
+async function uploadTemplateHeaderMedia(tenantId, opts) {
+  const config = await getTenantWAConfig(tenantId)
+  return provider.uploadTemplateHeaderMedia({ ...opts, config })
+}
+
 // Fetches all Meta-approved templates for the tenant's WABA
 async function fetchTemplates(tenantId) {
   const config = await getTenantWAConfig(tenantId)
@@ -129,6 +134,7 @@ module.exports = {
   getMediaUrl,
   downloadMedia,
   submitTemplate,
+  uploadTemplateHeaderMedia,
   fetchTemplates,
   exchangeCodeForToken,
   getWABAInfo,

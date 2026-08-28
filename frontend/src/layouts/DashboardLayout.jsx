@@ -1,15 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Send, Users, MessageSquare, FileText,
   Bell, Search, LogOut, PanelLeftClose, PanelLeftOpen, Wifi, WifiOff, MoreVertical, Phone,
-  UserCircle, Settings, AlertTriangle, ArrowRight, X,
+  UserCircle, Settings, AlertTriangle, ArrowRight, X, CheckCheck,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { toast } from 'sonner'
 import useAuthStore from '../store/authStore'
 import useUIStore from '../store/uiStore'
 import ConnectWhatsAppModal from '../components/onboarding/ConnectWhatsAppModal'
 import axiosInstance from '../api/axios'
+import socket, { connectSocket, disconnectSocket } from '../api/socket'
+import { timeAgo } from '../utils/formatters'
 
 const NAV = [
   { label: 'Dashboard',      icon: LayoutDashboard, to: '/dashboard' },
@@ -371,6 +374,184 @@ function HeaderSearch() {
   )
 }
 
+function NotificationBell() {
+  const { token } = useAuthStore()
+  const navigate = useNavigate()
+  const containerRef = useRef(null)
+  const [open,        setOpen]        = useState(false)
+  const [tab,         setTab]         = useState('inbox') // 'inbox' | 'unread'
+  const [convs,       setConvs]       = useState([])
+  const [loading,     setLoading]     = useState(false)
+  const [markingRead, setMarkingRead] = useState(false)
+
+  const fetchNotifications = useCallback(() => {
+    setLoading(true)
+    axiosInstance.get('/api/v1/conversations', { params: { limit: 30 } })
+      .then(({ data }) => setConvs(data.data?.conversations || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  // Owns the shared socket's connect/disconnect lifecycle for the whole authenticated app — this
+  // component lives in DashboardLayout, which wraps every page, so it's the one place a connection
+  // can safely persist across navigation. Inbox.jsx only adds/removes its own listeners now; it
+  // must never call connectSocket/disconnectSocket itself, or leaving Inbox would kill this feed.
+  useEffect(() => {
+    if (!token) return
+    connectSocket(token)
+    fetchNotifications()
+
+    const refresh = () => fetchNotifications()
+    socket.on('new_message', refresh)
+    socket.on('new_conversation_message', refresh)
+
+    return () => {
+      socket.off('new_message', refresh)
+      socket.off('new_conversation_message', refresh)
+      disconnectSocket()
+    }
+  }, [token, fetchNotifications])
+
+  useEffect(() => {
+    const onClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
+  const totalUnread = convs.reduce((sum, c) => sum + (c.unreadCount || 0), 0)
+  const unreadConvs = convs.filter((c) => c.unreadCount > 0)
+  const list = tab === 'unread' ? unreadConvs : convs
+  const cap = (n) => (n > 99 ? '99+' : String(n))
+
+  const handleMarkAllRead = async () => {
+    if (!totalUnread || markingRead) return
+    setMarkingRead(true)
+    try {
+      await axiosInstance.put('/api/v1/conversations/mark-all-read')
+      setConvs((cs) => cs.map((c) => ({ ...c, unreadCount: 0 })))
+    } catch {
+      toast.error('Failed to mark all as read')
+    } finally {
+      setMarkingRead(false)
+    }
+  }
+
+  const goToInbox = () => {
+    setOpen(false)
+    navigate('/inbox')
+  }
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="relative p-1.5 md:p-2 rounded-lg hover:bg-gray-100 text-gray-500"
+      >
+        <Bell size={18} />
+        {totalUnread > 0 && (
+          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-green-500 ring-2 ring-white" />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-lg border border-gray-100 z-50 overflow-hidden">
+          <div className="flex items-start justify-between px-4 pt-3.5 pb-2">
+            <div>
+              <p className="text-sm font-bold text-gray-900">Notifications</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {totalUnread > 0 ? `${totalUnread} unread update${totalUnread > 1 ? 's' : ''}` : 'All caught up'}
+              </p>
+            </div>
+            {totalUnread > 0 && (
+              <button
+                onClick={handleMarkAllRead}
+                disabled={markingRead}
+                className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 disabled:opacity-50 transition-colors shrink-0"
+              >
+                <CheckCheck size={13} /> Mark all read
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4 px-4 border-b border-gray-100">
+            {[
+              { key: 'inbox', label: 'Inbox', count: convs.length },
+              { key: 'unread', label: 'Unread', count: unreadConvs.length },
+            ].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={clsx(
+                  'flex items-center gap-1.5 pb-2.5 pt-1 text-sm font-medium border-b-2 -mb-px transition-colors',
+                  tab === t.key ? 'border-green-500 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
+                )}
+              >
+                {t.label}
+                {t.count > 0 && (
+                  <span className={clsx(
+                    'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                    tab === t.key ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                  )}>
+                    {cap(t.count)}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="max-h-96 overflow-y-auto">
+            {loading ? (
+              <p className="px-4 py-8 text-xs text-gray-400 text-center">Loading…</p>
+            ) : list.length === 0 ? (
+              <p className="px-4 py-8 text-xs text-gray-400 text-center">
+                {tab === 'unread' ? 'No unread messages' : 'No notifications yet'}
+              </p>
+            ) : (
+              list.map((c) => (
+                <button
+                  key={c._id}
+                  onClick={goToInbox}
+                  className={clsx(
+                    'w-full flex items-start gap-3 px-4 py-3 text-left border-b border-gray-50 last:border-b-0 transition-colors hover:bg-gray-50',
+                    c.unreadCount > 0 && 'bg-green-50/40'
+                  )}
+                >
+                  <span className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0 mt-0.5">
+                    <MessageSquare size={14} />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center gap-1.5">
+                      <span className={clsx('text-sm truncate', c.unreadCount > 0 ? 'font-semibold text-gray-900' : 'font-medium text-gray-700')}>
+                        New message from {c.contact?.name || c.contact?.phone || 'Unknown'}
+                      </span>
+                      {c.unreadCount > 0 && <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />}
+                    </span>
+                    <span className="block text-xs text-gray-400 truncate mt-0.5">
+                      {c.lastMessage?.text || 'No messages yet'}
+                    </span>
+                  </span>
+                  <span className="text-[11px] text-gray-400 shrink-0 mt-0.5 whitespace-nowrap">
+                    {timeAgo(c.lastMessage?.time || c.updatedAt)}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+
+          <button
+            onClick={goToInbox}
+            className="w-full py-2.5 text-xs font-semibold text-green-600 hover:bg-green-50 border-t border-gray-100 transition-colors"
+          >
+            View all in Inbox
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function DashboardLayout() {
   const { user, isOnboarded } = useAuthStore()
   const { sidebarOpen, toggleSidebar } = useUIStore()
@@ -441,10 +622,7 @@ export default function DashboardLayout() {
               {waConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
               {waConnected ? 'Connected' : 'Disconnected'}
             </span>
-            <button className="relative p-1.5 md:p-2 rounded-lg hover:bg-gray-100 text-gray-500">
-              <Bell size={18} />
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
-            </button>
+            <NotificationBell />
           </div>
         </header>
         {/* WhatsApp not connected banner */}

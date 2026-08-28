@@ -41,6 +41,15 @@ const getConversations = asyncHandler(async (req, res) => {
   return success(res, { conversations: filtered, total })
 })
 
+// PUT /api/v1/conversations/mark-all-read — bulk-clears unreadCount, used by the notification bell
+const markAllRead = asyncHandler(async (req, res) => {
+  await Conversation.updateMany(
+    { tenant: req.tenantId, unreadCount: { $gt: 0 } },
+    { $set: { unreadCount: 0 } }
+  )
+  return success(res, {}, 'All conversations marked as read')
+})
+
 // GET /api/v1/conversations/:id/messages
 const getMessages = asyncHandler(async (req, res) => {
   const conv = await Conversation.findOne({ _id: req.params.id, tenant: req.tenantId })
@@ -400,4 +409,4 @@ const getMediaUrlProxy = asyncHandler(async (req, res) => {
   }
 })
 
-module.exports = { getConversations, getMessages, sendMessage, sendMediaMessage, getMediaUrlProxy, updateConversation, simulateIncoming, startConversation }
+module.exports = { getConversations, getMessages, sendMessage, sendMediaMessage, getMediaUrlProxy, updateConversation, simulateIncoming, startConversation, markAllRead }

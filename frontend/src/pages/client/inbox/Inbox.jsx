@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import axiosInstance from '../../../api/axios'
-import socket, { connectSocket, disconnectSocket } from '../../../api/socket'
+import socket from '../../../api/socket'
 import useAuthStore from '../../../store/authStore'
 
 const EASE_OUT = [0.23, 1, 0.32, 1]
@@ -840,13 +840,16 @@ export default function Inbox() {
   }, [activeId])
 
   // ── Socket.io real-time ──────────────────────────────────
-  // Connect once per session — must NOT depend on activeId, or switching
-  // conversations tears down and reopens the whole socket on every click,
-  // dropping any event that arrives mid-reconnect.
+  // The socket's connect/disconnect lifecycle is owned by DashboardLayout (NotificationBell) now
+  // — it wraps every authenticated page, so it's the one place that can safely own a connection
+  // that survives navigating between pages. This effect only adds/removes ITS OWN listeners on
+  // the already-connected shared socket; it must NOT call connectSocket/disconnectSocket itself,
+  // and must pass named handler refs to socket.off (not the bare event name) — a bare
+  // socket.off('new_message') would also rip out DashboardLayout's own listener for that event.
+  // Must NOT depend on activeId, or switching conversations tears down and reopens listeners on
+  // every click, dropping any event that arrives mid-reconnect.
   useEffect(() => {
-    connectSocket(token) // sends JWT; backend middleware auto-joins tenant room
-
-    socket.on('new_message', ({ message }) => {
+    const handleNewMessage = ({ message }) => {
       const convId = message.conversation
       // Only append if that conversation's history is already loaded — otherwise this
       // would seed messages[convId] with just this one message, and the fetch effect
@@ -857,9 +860,9 @@ export default function Inbox() {
         ? { ...c, lastMsg: message.text, unread: message.type === 'customer' ? c.unread + 1 : c.unread }
         : c
       ))
-    })
+    }
 
-    socket.on('new_conversation_message', ({ conversationId }) => {
+    const handleNewConversationMessage = () => {
       // Refresh conversations on new message without overwriting optimistic local state.
       // Also inserts conversations that don't exist locally yet — e.g. a brand-new
       // contact's first-ever message — which a plain "update matching rows" merge
@@ -877,15 +880,15 @@ export default function Inbox() {
           })
         })
         .catch(() => {})
-    })
+    }
 
-    socket.on('conversation_updated', ({ conversation }) => {
+    const handleConversationUpdated = ({ conversation }) => {
       setConvs(cs => cs.map(c => c.id === conversation._id ? { ...c, ...normalizeConv(conversation), labels: conversation.labels || c.labels } : c))
-    })
+    }
 
     // Backend emits this on every delivered/read/failed webhook update — without it, a message
     // that later fails keeps showing its original "sent" checkmark until the chat is reopened.
-    socket.on('message_status', ({ messageId, status, error }) => {
+    const handleMessageStatus = ({ messageId, status, error }) => {
       setMessages(m => {
         const next = { ...m }
         for (const convId of Object.keys(next)) {
@@ -898,14 +901,18 @@ export default function Inbox() {
         }
         return next
       })
-    })
+    }
+
+    socket.on('new_message', handleNewMessage)
+    socket.on('new_conversation_message', handleNewConversationMessage)
+    socket.on('conversation_updated', handleConversationUpdated)
+    socket.on('message_status', handleMessageStatus)
 
     return () => {
-      socket.off('new_message')
-      socket.off('new_conversation_message')
-      socket.off('conversation_updated')
-      socket.off('message_status')
-      disconnectSocket()
+      socket.off('new_message', handleNewMessage)
+      socket.off('new_conversation_message', handleNewConversationMessage)
+      socket.off('conversation_updated', handleConversationUpdated)
+      socket.off('message_status', handleMessageStatus)
     }
   }, [token])
 

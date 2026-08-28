@@ -12,6 +12,7 @@ router.use('/dashboard',     require('./dashboard.routes'))
 router.use('/contacts',      require('./contact.routes'))
 router.use('/conversations', require('./conversation.routes'))
 router.use('/templates',     require('./template.routes'))
+router.use('/otp',           require('./otp.routes')) // API-key authenticated — see apiKeyAuth.middleware.js
 router.use('/campaigns',     require('./campaign.routes'))
 router.use('/admin',         require('./admin.routes'))
 router.use('/billing',       require('./billing.routes'))
