@@ -15,7 +15,13 @@ const componentSchema = new mongoose.Schema({
     // directly can carry one. Locking this down would fail `.save()` calls that touch unrelated
     // fields on such a template (see reconcileTemplateStatuses) purely because of a button type
     // we don't recognize. Real shape checks for OUR supported types live in templateValidation.js.
-    type: String,
+    //
+    // MUST stay nested as `{ type: String }`, not the bare `type: String` shorthand — Mongoose
+    // treats a literal `type` key as defining the WHOLE containing object's type when that value
+    // is a bare SchemaType, collapsing this entire array element (and every sibling field below)
+    // down to a plain string. The nested form is Mongoose's documented escape hatch for a field
+    // that's actually named "type" sitting alongside other fields.
+    type: { type: String },
     text: String, url: String, phone_number: String,
     // OTP (AUTHENTICATION templates) only
     otp_type:                { type: String, enum: ['COPY_CODE', 'ONE_TAP', 'ZERO_TAP'] },
