@@ -68,7 +68,11 @@ async function processCampaignSend(campaign, tenantId, contacts) {
 
     try {
       // Build Meta API components array to satisfy template parameter requirements.
-      // Each {{N}} placeholder in the body must have a matching parameter value.
+      // Each {{N}} placeholder in the body must have a matching parameter value. A media header
+      // also needs its own component here — Meta rejects the whole send with (#132012)
+      // "Parameter format does not match format in the created template" if a component the
+      // template was approved with (like an image header) is missing from the request, even
+      // when the header itself has no {{n}} to fill.
       const metaComponents = []
       for (const comp of (campaign.template.components || [])) {
         if (comp.type === 'BODY') {
@@ -82,6 +86,9 @@ async function processCampaignSend(campaign, tenantId, contacts) {
             }))
             metaComponents.push({ type: 'body', parameters })
           }
+        } else if (comp.type === 'HEADER' && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(comp.format) && comp.example?.header_url) {
+          const mediaType = comp.format.toLowerCase()
+          metaComponents.unshift({ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: comp.example.header_url } }] })
         }
       }
 

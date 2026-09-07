@@ -80,10 +80,18 @@ function flatToComponents(form) {
       }
       comps.push(headerComp)
     } else {
-      // IMAGE | VIDEO | DOCUMENT — Meta requires format field + a header_handle example
-      // from the Resumable Upload API (see the header-media upload flow), not arbitrary URLs.
+      // IMAGE | VIDEO | DOCUMENT — Meta requires format field + a header_handle example from
+      // the Resumable Upload API for approval. header_url is a separate, durable ImageKit copy
+      // used at SEND time (the Meta handle expires in ~24h, long before a template gets reused) —
+      // without it, sending this template later has nothing to fill the required header
+      // parameter with and Meta rejects it as a shape mismatch.
       const headerComp = { type: 'HEADER', format: form.header.type.toUpperCase() }
-      if (form.header.headerHandle) headerComp.example = { header_handle: [form.header.headerHandle] }
+      if (form.header.headerHandle || form.header.headerMediaUrl) {
+        headerComp.example = {
+          ...(form.header.headerHandle   ? { header_handle: [form.header.headerHandle] } : {}),
+          ...(form.header.headerMediaUrl ? { header_url: form.header.headerMediaUrl } : {}),
+        }
+      }
       comps.push(headerComp)
     }
   }
@@ -142,7 +150,7 @@ function componentsToFlat(components = [], category) {
       packageName: a.package_name || '', signatureHash: a.signature_hash || '',
     }))
     return {
-      header: { type: 'none', text: '', url: '', headerHandle: '', previewUrl: '' },
+      header: { type: 'none', text: '', url: '', headerHandle: '', headerMediaUrl: '', previewUrl: '' },
       body: '', footer: '', buttons: [], sampleValues: {},
       authConfig: {
         codeExpirationMinutes: f?.code_expiration_minutes ?? 10,
@@ -160,7 +168,7 @@ function componentsToFlat(components = [], category) {
   const b  = components.find((c) => c.type === 'BODY')
   const f  = components.find((c) => c.type === 'FOOTER')
   const bt = components.find((c) => c.type === 'BUTTONS')
-  let header = { type: 'none', text: '', url: '', headerHandle: '', previewUrl: '' }
+  let header = { type: 'none', text: '', url: '', headerHandle: '', headerMediaUrl: '', previewUrl: '' }
   if (h) {
     // prefer h.format (Meta's field); fall back to reading h.text for old records
     const fmt = (h.format || h.text || '').toUpperCase()
@@ -170,7 +178,8 @@ function componentsToFlat(components = [], category) {
       text: isMedia ? '' : (h.text || ''),
       url: '',
       headerHandle: isMedia ? (h.example?.header_handle?.[0] || '') : '',
-      previewUrl: '',
+      headerMediaUrl: isMedia ? (h.example?.header_url || '') : '',
+      previewUrl: isMedia ? (h.example?.header_url || '') : '',
     }
   }
   const sampleValues = {}
@@ -364,7 +373,7 @@ function WaPreview({ form }) {
 
 const BLANK = {
   name: '', category: 'marketing', language: 'English',
-  header: { type: 'none', text: '', url: '', headerHandle: '', previewUrl: '' },
+  header: { type: 'none', text: '', url: '', headerHandle: '', headerMediaUrl: '', previewUrl: '' },
   body: '', footer: '',
   buttons: [],
   sampleValues: {},
@@ -479,6 +488,7 @@ function TemplateDrawer({ template, onSave, onClose }) {
     if (!file) return
     setHeader('previewUrl', file.type.startsWith('image/') ? URL.createObjectURL(file) : '')
     setHeader('headerHandle', '')
+    setHeader('headerMediaUrl', '')
     setHeader('uploading', true)
     try {
       const body = new FormData()
@@ -487,6 +497,7 @@ function TemplateDrawer({ template, onSave, onClose }) {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setHeader('headerHandle', data.data.headerHandle)
+      setHeader('headerMediaUrl', data.data.headerMediaUrl)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to upload header media')
     } finally {

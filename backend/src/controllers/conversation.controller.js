@@ -241,10 +241,22 @@ const startConversation = asyncHandler(async (req, res) => {
   const waBlockedStart = checkWAConnected(tenant)
   if (waBlockedStart) return res.status(403).json(waBlockedStart)
 
-  // Build WhatsApp runtime components from variable values
+  const tpl = await Template.findOne({ tenant: req.tenantId, name: templateName }).lean()
+
+  // Build WhatsApp runtime components from variable values — plus a HEADER component for
+  // media-header templates. Meta rejects the send with (#132012) "Parameter format does not
+  // match format in the created template" if a component the template was approved with (like an
+  // image header) is missing from the send request; this can't be skipped just because there are
+  // no {{n}} variables to fill.
   const components = variables.length
     ? [{ type: 'body', parameters: variables.map(v => ({ type: 'text', text: String(v) })) }]
     : []
+  const headerComp = tpl?.components?.find(c => c.type === 'HEADER')
+  const headerMediaUrl = headerComp?.example?.header_url
+  if (headerComp?.format && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerComp.format) && headerMediaUrl) {
+    const mediaType = headerComp.format.toLowerCase()
+    components.unshift({ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: headerMediaUrl } }] })
+  }
 
   let waMessageId = null
   try {
@@ -277,7 +289,6 @@ const startConversation = asyncHandler(async (req, res) => {
   let displayText = variables.length
     ? `[Template: ${templateName}] ${variables.join(' · ')}`
     : `[Template: ${templateName}]`
-  const tpl = await Template.findOne({ tenant: req.tenantId, name: templateName }).lean()
   const bodyText = tpl?.components?.find(c => c.type === 'BODY')?.text
   if (bodyText) {
     displayText = bodyText.replace(/\{\{(\d+)\}\}/g, (_, n) => variables[Number(n) - 1] ?? `{{${n}}}`)

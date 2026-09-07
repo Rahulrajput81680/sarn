@@ -9,6 +9,7 @@ const { checkWAConnected } = require('../utils/waGuard')
 const { sendEmail, newTemplateSubmittedEmail, templateApprovedEmail, templateRejectedEmail } = require('../utils/emailService')
 const { translateMetaError } = require('../utils/metaErrors')
 const { validateTemplateComponents } = require('../utils/templateValidation')
+const imagekit = require('../utils/imagekit')
 
 // Submits a template to Meta for real review. Shared by the tenant-facing submit action and
 // the admin's manual retry/override action, so the Meta-submission handling (WABA connection
@@ -147,15 +148,30 @@ const updateTemplate = asyncHandler(async (req, res) => {
 // header_handle to embed in the template's HEADER component example — Meta template media does
 // NOT accept arbitrary public URLs, only a handle from its own upload session, and the handle is
 // short-lived (~24h), so this is called at file-select time in the create/edit form.
+//
+// ALSO hosts a durable copy on ImageKit (headerMediaUrl) — the Meta handle is only good for the
+// initial template submission, but the template itself lives on to be sent again and again (an
+// agent re-engaging a customer weeks later, a bulk campaign). Without a stable URL to reuse at
+// send time, every later send would need the header parameter Meta actually requires and has
+// nothing to fill it with, which is exactly what caused (#132012) "Parameter format does not
+// match format in the created template" — the send request was missing the header component
+// entirely for image/video/document-header templates.
 const uploadTemplateHeaderMedia = asyncHandler(async (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' })
   try {
-    const { headerHandle } = await waService.uploadTemplateHeaderMedia(req.tenantId, {
-      buffer:   req.file.buffer,
-      mimeType: req.file.mimetype,
-      fileName: req.file.originalname,
-    })
-    return success(res, { headerHandle }, 'Header media uploaded')
+    const [{ headerHandle }, uploaded] = await Promise.all([
+      waService.uploadTemplateHeaderMedia(req.tenantId, {
+        buffer:   req.file.buffer,
+        mimeType: req.file.mimetype,
+        fileName: req.file.originalname,
+      }),
+      imagekit.upload({
+        file: req.file.buffer,
+        fileName: `${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`,
+        folder: '/whatsapp-template-media',
+      }),
+    ])
+    return success(res, { headerHandle, headerMediaUrl: uploaded.url }, 'Header media uploaded')
   } catch (err) {
     return res.status(502).json({ success: false, message: translateMetaError(err) })
   }
