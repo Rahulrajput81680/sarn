@@ -294,6 +294,13 @@ const startConversation = asyncHandler(async (req, res) => {
     displayText = bodyText.replace(/\{\{(\d+)\}\}/g, (_, n) => variables[Number(n) - 1] ?? `{{${n}}}`)
   }
 
+  // Carry the header image/video/document through to our own record too — otherwise the Inbox
+  // shows text-only for a send the recipient actually saw with media, since Meta's send request
+  // and our local Message record were built from two different sources of truth.
+  const mediaType = headerComp?.format && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerComp.format)
+    ? headerComp.format.toLowerCase()
+    : null
+
   const message = await Message.create({
     conversation: conv._id,
     tenant: req.tenantId,
@@ -303,6 +310,7 @@ const startConversation = asyncHandler(async (req, res) => {
     sentBy: req.user._id,
     waMessageId,
     timestamp: new Date(),
+    ...(mediaType && headerMediaUrl ? { mediaUrl: headerMediaUrl, mediaType } : {}),
   })
 
   await Conversation.findByIdAndUpdate(conv._id, {

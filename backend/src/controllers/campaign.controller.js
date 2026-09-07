@@ -74,6 +74,8 @@ async function processCampaignSend(campaign, tenantId, contacts) {
       // template was approved with (like an image header) is missing from the request, even
       // when the header itself has no {{n}} to fill.
       const metaComponents = []
+      let headerMediaUrl = null
+      let headerMediaType = null
       for (const comp of (campaign.template.components || [])) {
         if (comp.type === 'BODY') {
           const placeholders = [...new Set((comp.text || '').match(/\{\{(\d+)\}\}/g) || [])]
@@ -87,8 +89,9 @@ async function processCampaignSend(campaign, tenantId, contacts) {
             metaComponents.push({ type: 'body', parameters })
           }
         } else if (comp.type === 'HEADER' && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(comp.format) && comp.example?.header_url) {
-          const mediaType = comp.format.toLowerCase()
-          metaComponents.unshift({ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: comp.example.header_url } }] })
+          headerMediaType = comp.format.toLowerCase()
+          headerMediaUrl = comp.example.header_url
+          metaComponents.unshift({ type: 'header', parameters: [{ type: headerMediaType, [headerMediaType]: { link: headerMediaUrl } }] })
         }
       }
 
@@ -127,6 +130,10 @@ async function processCampaignSend(campaign, tenantId, contacts) {
           status: 'sent',
           waMessageId: result.messageId,
           timestamp: new Date(),
+          // Carry the header media through to our own record — otherwise the Inbox shows
+          // text-only for a send the recipient actually saw with an image/video/document,
+          // since Meta's send request and our local Message record come from different code.
+          ...(headerMediaType && headerMediaUrl ? { mediaUrl: headerMediaUrl, mediaType: headerMediaType } : {}),
         }).catch(() => null)
 
         if (message) {
