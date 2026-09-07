@@ -1,5 +1,5 @@
 const router = require('express').Router()
-const { requireTenant, getTemplates, createTemplate, updateTemplate, deleteTemplate, submitTemplate, syncTemplatesFromMeta, uploadTemplateHeaderMedia } = require('../controllers/template.controller')
+const { requireTenant, getTemplates, createTemplate, updateTemplate, deleteTemplate, submitTemplate, syncTemplatesFromMeta, uploadTemplateHeaderMedia, backfillHeaderMedia } = require('../controllers/template.controller')
 const { protect } = require('../middleware/auth.middleware')
 const { mediaUpload } = require('../utils/multerConfig')
 
@@ -12,5 +12,6 @@ router.post('/header-media', requireTenant, mediaUpload.single('file'), uploadTe
 router.put('/:id',           requireTenant, updateTemplate)
 router.delete('/:id',        requireTenant, deleteTemplate)
 router.post('/:id/submit',   requireTenant, submitTemplate)
+router.post('/:id/header-media', requireTenant, mediaUpload.single('file'), backfillHeaderMedia)
 
 module.exports = router

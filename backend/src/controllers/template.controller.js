@@ -177,6 +177,39 @@ const uploadTemplateHeaderMedia = asyncHandler(async (req, res) => {
   }
 })
 
+// ── POST /api/v1/templates/:id/header-media ───────────────────────────────────
+// Backfills/refreshes the durable send-time media URL on an EXISTING template's HEADER
+// component — works regardless of status, including APPROVED. Templates created before the
+// header_url fix (or whose durable copy needs replacing) only have Meta's original upload
+// handle, long expired, so every send fails with (#132012). This never touches Meta or the
+// template's approval status — header_url is our own bookkeeping Meta never sees — so no
+// re-review is needed, unlike a normal edit.
+const backfillHeaderMedia = asyncHandler(async (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' })
+
+  const template = await Template.findOne({ _id: req.params.id, tenant: req.tenantId })
+  if (!template) return res.status(404).json({ success: false, message: 'Template not found' })
+
+  const headerComp = template.components.find((c) => c.type === 'HEADER')
+  if (!headerComp || !['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerComp.format)) {
+    return res.status(400).json({ success: false, message: 'This template has no media header to attach.' })
+  }
+
+  try {
+    const uploaded = await imagekit.upload({
+      file: req.file.buffer,
+      fileName: `${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`,
+      folder: '/whatsapp-template-media',
+    })
+    headerComp.example = { ...(headerComp.example || {}), header_url: uploaded.url }
+    template.markModified('components')
+    await template.save({ validateBeforeSave: false })
+    return success(res, { headerMediaUrl: uploaded.url }, 'Media attached — this template can now be sent with its image.')
+  } catch (err) {
+    return res.status(502).json({ success: false, message: 'Failed to upload media. Please try again.' })
+  }
+})
+
 // ── DELETE /api/v1/templates/:id ──────────────────────────────────────────────
 const deleteTemplate = asyncHandler(async (req, res) => {
   const template = await Template.findOneAndDelete({ _id: req.params.id, tenant: req.tenantId })
@@ -426,4 +459,5 @@ module.exports = {
   reconcileTemplateStatuses,
   handleTemplateStatusWebhook,
   uploadTemplateHeaderMedia,
+  backfillHeaderMedia,
 }

@@ -958,7 +958,7 @@ function TemplateDrawer({ template, onSave, onClose }) {
 
 /* ─── Row action menu ────────────────────────────────────── */
 
-function RowMenu({ t, onEdit, onDuplicate, onDelete, onSubmit }) {
+function RowMenu({ t, onEdit, onDuplicate, onDelete, onSubmit, onAttachMedia, needsMediaBackfill }) {
   const [open, setOpen] = useState(false)
   const items = [
     { key: 'edit',      label: 'Edit',                icon: AlignLeft  },
@@ -966,9 +966,12 @@ function RowMenu({ t, onEdit, onDuplicate, onDelete, onSubmit }) {
     ...(t.status === 'draft' || t.status === 'rejected'
       ? [{ key: 'submit', label: 'Submit for Approval', icon: Send, green: true }]
       : []),
+    ...(needsMediaBackfill
+      ? [{ key: 'attachMedia', label: 'Attach Media', icon: Image, green: true }]
+      : []),
     { key: 'delete',    label: 'Delete',               icon: Trash2, danger: true },
   ]
-  const handlers = { edit: onEdit, duplicate: onDuplicate, delete: onDelete, submit: onSubmit }
+  const handlers = { edit: onEdit, duplicate: onDuplicate, delete: onDelete, submit: onSubmit, attachMedia: onAttachMedia }
 
   return (
     <div className="relative">
@@ -1005,13 +1008,39 @@ function RowMenu({ t, onEdit, onDuplicate, onDelete, onSubmit }) {
 
 /* ─── Template card ──────────────────────────────────────── */
 
-function TemplateCard({ t, index, onEdit, onDuplicate, onDelete, onSubmit }) {
+function TemplateCard({ t, index, onEdit, onDuplicate, onDelete, onSubmit, onMediaAttached }) {
   const [showRejection, setShowRejection] = useState(false)
+  const [attaching, setAttaching] = useState(false)
+  const attachFileRef = useRef(null)
   const cat      = CATEGORIES.find((c) => c.key === t.category)
   const stStatus = STATUS_STYLE[t.status]
   const SIcon    = stStatus.icon
 
   const varCount = countVars(t.body)
+  // Only surface this when it's actually broken — a media header with no durable send-time URL
+  // (created before the header_url fix, or its ImageKit copy needs replacing) will fail every
+  // send with Meta's (#132012) "Parameter format does not match" error.
+  const needsMediaBackfill = ['image', 'video', 'document'].includes(t.header.type) && !t.header.headerMediaUrl
+
+  const handleAttachMediaFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setAttaching(true)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      await api.post(`/api/v1/templates/${t.id}/header-media`, body, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      toast.success('Media attached — this template can now be sent with its image.')
+      onMediaAttached?.()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to attach media')
+    } finally {
+      setAttaching(false)
+    }
+  }
 
   return (
     <motion.div
@@ -1039,7 +1068,22 @@ function TemplateCard({ t, index, onEdit, onDuplicate, onDelete, onSubmit }) {
             </p>
           )}
         </div>
-        <RowMenu t={t} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} onSubmit={onSubmit} />
+        <RowMenu
+          t={t}
+          onEdit={onEdit}
+          onDuplicate={onDuplicate}
+          onDelete={onDelete}
+          onSubmit={onSubmit}
+          onAttachMedia={() => attachFileRef.current?.click()}
+          needsMediaBackfill={needsMediaBackfill}
+        />
+        <input
+          ref={attachFileRef}
+          type="file"
+          accept={t.header.type === 'image' ? 'image/*' : t.header.type === 'video' ? 'video/*' : 'application/pdf'}
+          className="hidden"
+          onChange={handleAttachMediaFile}
+        />
       </div>
 
       {/* Body preview */}
@@ -1055,6 +1099,12 @@ function TemplateCard({ t, index, onEdit, onDuplicate, onDelete, onSubmit }) {
             {t.header.type === 'video'    && <><Video size={11} /> Video header</>}
             {t.header.type === 'document' && <><File  size={11} /> Doc header</>}
             {t.header.type === 'text'     && <><Type  size={11} /> {t.header.text.slice(0, 20)}{t.header.text.length > 20 ? '…' : ''}</>}
+          </span>
+        )}
+        {attaching && <span className="text-blue-500">Attaching media…</span>}
+        {!attaching && needsMediaBackfill && (
+          <span className="flex items-center gap-1 text-amber-600" title="Sends will fail until media is re-attached — use Attach Media in the menu">
+            <AlertTriangle size={11} /> Media needs re-attaching
           </span>
         )}
         {t.buttons.length > 0 && <span>{t.buttons.length} button{t.buttons.length > 1 ? 's' : ''}</span>}
@@ -1265,6 +1315,7 @@ export default function Templates() {
                 onDuplicate={() => handleDuplicate(t)}
                 onDelete={() => handleDelete(t.id)}
                 onSubmit={() => handleSubmit(t.id)}
+                onMediaAttached={fetchTemplates}
               />
             ))}
           </AnimatePresence>
