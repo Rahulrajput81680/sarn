@@ -23,11 +23,11 @@ import Terms from '../pages/landing/Terms'
 
 // Admin pages
 import AdminDashboard from '../pages/admin/AdminDashboard'
+import AdminProfile from '../pages/admin/AdminProfile'
+import AdminSettings from '../pages/admin/AdminSettings'
 import UserList from '../pages/admin/user-management/UserList'
-import UserDetail from '../pages/admin/user-management/UserDetail'
 import TenantList from '../pages/admin/tenant-management/TenantList'
 import TenantDetail from '../pages/admin/tenant-management/TenantDetail'
-import CreateTenant from '../pages/admin/tenant-management/CreateTenant'
 import Plans from '../pages/admin/subscription/Plans'
 import SubscriptionList from '../pages/admin/subscription/SubscriptionList'
 import APIMonitor from '../pages/admin/api-usage/APIMonitor'
@@ -141,14 +141,12 @@ export default function AppRouter() {
           <Route path="/admin/bulk-messaging" element={<BulkMessaging />} />
           <Route path="/admin/contacts" element={<Contacts />} />
           <Route path="/admin/meta/templates" element={<TemplateApproval />} />
-          <Route path="/admin/profile" element={<Profile />} />
-          <Route path="/admin/settings" element={<Settings />} />
+          <Route path="/admin/profile" element={<AdminProfile />} />
+          <Route path="/admin/settings" element={<AdminSettings />} />
 
           {/* Client management */}
           <Route path="/admin/users" element={<UserList />} />
-          <Route path="/admin/users/:id" element={<UserDetail />} />
           <Route path="/admin/tenants" element={<TenantList />} />
-          <Route path="/admin/tenants/new" element={<CreateTenant />} />
           <Route path="/admin/tenants/:id" element={<TenantDetail />} />
 
           {/* Monitoring */}

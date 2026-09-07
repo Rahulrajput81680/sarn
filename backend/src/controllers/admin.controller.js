@@ -254,10 +254,21 @@ const reviewTemplate = asyncHandler(async (req, res) => {
 // GET /api/v1/admin/health
 const getSystemHealth = asyncHandler(async (req, res) => {
   const mem = process.memoryUsage()
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+
+  // "Is the Meta webhook alive" can't be answered with a fake boolean — a quiet-but-healthy
+  // tenant looks identical to a broken endpoint from here. Report the real signal (when the
+  // last event arrived, how many in 24h) and let the UI show that instead of guessing up/down.
+  const [lastEvent, count24h] = await Promise.all([
+    WebhookLog.findOne().sort({ createdAt: -1 }).select('createdAt').lean(),
+    WebhookLog.countDocuments({ createdAt: { $gte: dayAgo } }),
+  ])
+
   return success(res, {
     uptime:    Math.floor(process.uptime()),
     db:        { connected: mongoose.connection.readyState === 1 },
     memory:    { usedMB: Math.round(mem.heapUsed / 1_048_576), totalMB: Math.round(mem.heapTotal / 1_048_576) },
+    webhook:   { lastEventAt: lastEvent?.createdAt || null, count24h },
     timestamp: new Date().toISOString(),
   })
 })

@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Ban, CreditCard, Trash2, UserCheck, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Ban, CreditCard, Trash2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import Badge from '../../../components/ui/Badge'
 import Button from '../../../components/ui/Button'
 import Table from '../../../components/ui/Table'
+import Modal from '../../../components/ui/Modal'
 import RoleBadge from '../../../components/shared/RoleBadge'
 import { formatDate, formatNumber } from '../../../utils/formatters'
 import api from '../../../api/axios'
+
+const PLANS = ['starter', 'growth', 'enterprise']
 
 const TABS = [
   { key: 'overview',      label: 'Overview' },
@@ -29,6 +32,8 @@ export default function TenantDetail() {
   const [loading, setLoading]       = useState(true)
   const [usersLoading, setUsersLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState('')
+  const [planModalOpen, setPlanModalOpen] = useState(false)
+  const [selectedPlan, setSelectedPlan]   = useState('')
 
   const fetchTenant = useCallback(async () => {
     try {
@@ -71,6 +76,26 @@ export default function TenantDetail() {
       toast.success(`Tenant ${next ? 'reactivated' : 'suspended'}`)
     } catch {
       toast.error('Action failed')
+    } finally {
+      setActionLoading('')
+    }
+  }
+
+  function openPlanModal() {
+    setSelectedPlan(tenant.plan)
+    setPlanModalOpen(true)
+  }
+
+  async function handleChangePlan() {
+    if (!selectedPlan || selectedPlan === tenant.plan) { setPlanModalOpen(false); return }
+    try {
+      setActionLoading('plan')
+      await api.patch(`/api/v1/admin/tenants/${id}`, { plan: selectedPlan })
+      setTenant((t) => ({ ...t, plan: selectedPlan }))
+      toast.success(`Plan changed to ${selectedPlan}`)
+      setPlanModalOpen(false)
+    } catch {
+      toast.error('Failed to change plan')
     } finally {
       setActionLoading('')
     }
@@ -155,8 +180,9 @@ export default function TenantDetail() {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap shrink-0">
-            <Button variant="secondary" size="sm" icon={<UserCheck size={14} />}>Impersonate</Button>
-            <Button variant="outline"   size="sm" icon={<CreditCard size={14} />}>Change Plan</Button>
+            <Button variant="outline" size="sm" icon={<CreditCard size={14} />} onClick={openPlanModal}>
+              Change Plan
+            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -288,6 +314,34 @@ export default function TenantDetail() {
           <p className="font-medium text-gray-600">Audit log coming soon</p>
         </div>
       )}
+
+      <Modal isOpen={planModalOpen} onClose={() => setPlanModalOpen(false)} title="Change Plan" size="sm">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            {PLANS.map((p) => (
+              <label
+                key={p}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                  selectedPlan === p ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="plan"
+                  checked={selectedPlan === p}
+                  onChange={() => setSelectedPlan(p)}
+                  className="text-green-600 focus:ring-green-500"
+                />
+                <span className="text-sm font-medium text-gray-800 capitalize">{p}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" size="sm" onClick={() => setPlanModalOpen(false)}>Cancel</Button>
+            <Button size="sm" loading={actionLoading === 'plan'} onClick={handleChangePlan}>Save</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

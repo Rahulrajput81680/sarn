@@ -1,6 +1,7 @@
-const Template = require('../models/Template')
-const Tenant   = require('../models/Tenant')
-const User     = require('../models/User')
+const Template   = require('../models/Template')
+const Tenant     = require('../models/Tenant')
+const User       = require('../models/User')
+const WebhookLog = require('../models/WebhookLog')
 const asyncHandler = require('../utils/asyncHandler')
 const { success }  = require('../utils/apiResponse')
 const waService    = require('../services/whatsapp/whatsapp.service')
@@ -313,6 +314,7 @@ async function reconcileTemplateStatuses(tenantId) {
 // Updates the template status in MongoDB automatically — no manual action needed.
 // ✅ This is what makes new template approvals show up automatically.
 async function handleTemplateStatusWebhook(event) {
+  const start = Date.now()
   const { message_template_id, message_template_name, event: status } = event
 
   // Map Meta event names → our DB status values
@@ -338,6 +340,11 @@ async function handleTemplateStatusWebhook(event) {
 
   if (updated) {
     console.log(`[Template Webhook] "${message_template_name}" → ${dbStatus} (id: ${message_template_id})`)
+    await WebhookLog.create({
+      tenant: updated.tenant, event: 'message_template_status_update', status: 'success', code: 200,
+      latencyMs: Date.now() - start,
+      payload: { templateName: message_template_name, metaStatus: status, dbStatus },
+    }).catch(() => {})
 
     // Email the tenant owner when Meta confirms APPROVED or REJECTED
     if (dbStatus === 'APPROVED' || dbStatus === 'REJECTED') {
@@ -383,6 +390,11 @@ async function handleTemplateStatusWebhook(event) {
       { upsert: true }
     )
     console.log(`[Template Webhook] New template "${message_template_name}" upserted → ${dbStatus}`)
+    await WebhookLog.create({
+      tenant: tenant._id, event: 'message_template_status_update', status: 'success', code: 200,
+      latencyMs: Date.now() - start,
+      payload: { templateName: message_template_name, metaStatus: status, dbStatus, upserted: true },
+    }).catch(() => {})
   }
 }
 

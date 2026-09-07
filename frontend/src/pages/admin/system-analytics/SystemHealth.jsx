@@ -19,35 +19,43 @@ function fmtUptime(seconds) {
   return `${m}m ${seconds % 60}s`
 }
 
-function StatusDot({ ok }) {
+// status: 'ok' | 'unknown' | 'down' — 'unknown' exists so a merely-quiet-but-fine service (e.g.
+// no webhook events recently because there's just no traffic) doesn't get flagged red like an
+// actual outage would.
+const STATUS_STYLE = {
+  ok:      { dot: 'bg-green-500', text: 'text-green-600', label: 'Operational', icon: CheckCircle2, iconCls: 'text-green-500', cardBg: 'bg-green-50', cardIconCls: 'text-green-600', border: 'border-gray-100' },
+  unknown: { dot: 'bg-gray-400',  text: 'text-gray-500',  label: 'No data yet', icon: AlertCircle,  iconCls: 'text-gray-400',  cardBg: 'bg-gray-50',  cardIconCls: 'text-gray-500',  border: 'border-gray-100' },
+  down:    { dot: 'bg-red-500',   text: 'text-red-500',   label: 'Degraded',    icon: XCircle,      iconCls: 'text-red-500',   cardBg: 'bg-red-50',   cardIconCls: 'text-red-500',   border: 'border-red-200 bg-red-50/30' },
+}
+
+function StatusDot({ status }) {
+  const s = STATUS_STYLE[status]
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${ok ? 'text-green-600' : 'text-red-500'}`}>
-      <span className={`w-2 h-2 rounded-full ${ok ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
-      {ok ? 'Operational' : 'Degraded'}
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${s.text}`}>
+      <span className={`w-2 h-2 rounded-full ${s.dot} ${status !== 'unknown' ? 'animate-pulse' : ''}`} />
+      {s.label}
     </span>
   )
 }
 
-function ServiceCard({ icon: Icon, label, ok, detail, index }) {
+function ServiceCard({ icon: Icon, label, status, detail, index }) {
+  const s = STATUS_STYLE[status]
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: EASE_OUT, delay: index * 0.06 }}
-      className={`bg-white rounded-xl border shadow-sm p-5 flex items-start gap-4 ${ok ? 'border-gray-100' : 'border-red-200 bg-red-50/30'}`}
+      className={`bg-white rounded-xl border shadow-sm p-5 flex items-start gap-4 ${s.border}`}
     >
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${ok ? 'bg-green-50' : 'bg-red-50'}`}>
-        <Icon size={18} className={ok ? 'text-green-600' : 'text-red-500'} />
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${s.cardBg}`}>
+        <Icon size={18} className={s.cardIconCls} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1">
           <p className="text-sm font-semibold text-gray-900">{label}</p>
-          {ok
-            ? <CheckCircle2 size={15} className="text-green-500 shrink-0" />
-            : <XCircle size={15} className="text-red-500 shrink-0" />
-          }
+          <s.icon size={15} className={`${s.iconCls} shrink-0`} />
         </div>
-        <StatusDot ok={ok} />
+        <StatusDot status={status} />
         {detail && <p className="text-xs text-gray-400 mt-1.5">{detail}</p>}
       </div>
     </motion.div>
@@ -215,22 +223,26 @@ export default function SystemHealth() {
               index={0}
               icon={Server}
               label="API Server"
-              ok={true}
-              detail="Express.js — responding normally"
+              status="ok"
+              detail="Express.js — responding normally (this page loaded, so it is)"
             />
             <ServiceCard
               index={1}
               icon={Database}
               label="MongoDB"
-              ok={health.db.connected}
+              status={health.db.connected ? 'ok' : 'down'}
               detail={health.db.connected ? 'Connected and accepting queries' : 'Connection lost — check MONGO_URI'}
             />
             <ServiceCard
               index={2}
               icon={Wifi}
               label="Meta Webhook"
-              ok={true}
-              detail="POST /api/v1/webhooks/meta is active"
+              status={!health.webhook?.lastEventAt ? 'unknown' : (Date.now() - new Date(health.webhook.lastEventAt).getTime()) / 3_600_000 <= 24 ? 'ok' : 'unknown'}
+              detail={
+                health.webhook?.lastEventAt
+                  ? `Last event ${fmtUptime(Math.round((Date.now() - new Date(health.webhook.lastEventAt).getTime()) / 1000))} ago · ${health.webhook.count24h} in 24h`
+                  : 'No webhook events received yet'
+              }
             />
           </div>
 

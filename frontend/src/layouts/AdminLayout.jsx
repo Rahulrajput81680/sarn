@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, FileText,
-  Building2, UserPlus, Activity, Webhook,
+  Building2, Activity, Webhook,
   Bell, Search, LogOut, PanelLeftClose, PanelLeftOpen,
   UserCircle, Settings, MoreVertical, Shield, Users2,
 } from 'lucide-react'
@@ -18,7 +18,6 @@ const NAV = [
 // Admin-only management tools
 const ADMIN_NAV = [
   { label: 'Manage Clients', icon: Building2, to: '/admin/tenants' },
-  { label: 'Add New Client', icon: UserPlus,  to: '/admin/tenants/new' },
   { label: 'All Users',      icon: Users2,    to: '/admin/users' },
   { label: 'System Health',  icon: Activity,  to: '/admin/system-health' },
   { label: 'Webhook Logs',   icon: Webhook,   to: '/admin/webhook-logs' },

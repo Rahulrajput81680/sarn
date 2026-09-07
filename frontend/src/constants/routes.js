@@ -34,11 +34,8 @@ export const ROUTES = {
 
   ADMIN: '/admin',
   ADMIN_USERS: '/admin/users',
-  ADMIN_USER_DETAIL: '/admin/users/:id',
-  ADMIN_USER_NEW: '/admin/users/new',
   ADMIN_TENANTS: '/admin/tenants',
   ADMIN_TENANT_DETAIL: '/admin/tenants/:id',
-  ADMIN_TENANT_NEW: '/admin/tenants/new',
   ADMIN_PLANS: '/admin/plans',
   ADMIN_PLAN_DETAIL: '/admin/plans/:id',
   ADMIN_SUBSCRIPTIONS: '/admin/subscriptions',

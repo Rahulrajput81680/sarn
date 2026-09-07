@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Plus, Search, Building2, ChevronRight, MoreVertical,
+  Search, Building2, ChevronRight, MoreVertical,
   CheckCircle2, PauseCircle, Ban, Clock, Filter, RefreshCw,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -196,14 +196,9 @@ export default function UserList() {
         description={`${total} client account${total !== 1 ? 's' : ''} on the platform`}
         breadcrumbs={['Admin', 'User Management']}
         action={
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" icon={<RefreshCw size={14} />} onClick={fetchClients}>
-              Refresh
-            </Button>
-            <Button size="sm" icon={<Plus size={14} />} onClick={() => navigate('/admin/tenants/new')}>
-              Add Client
-            </Button>
-          </div>
+          <Button variant="secondary" size="sm" icon={<RefreshCw size={14} />} onClick={fetchClients}>
+            Refresh
+          </Button>
         }
       />
 

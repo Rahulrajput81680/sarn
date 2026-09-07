@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Building2, Users, MessageSquare, Server,
-  Activity, CheckCircle2, AlertTriangle, XCircle, Plus,
+  Activity, CheckCircle2, AlertTriangle, XCircle,
   Megaphone, ChevronRight, Zap, Database, RefreshCw,
   ArrowUpRight, ArrowDownRight, Clock, UserPlus, LayoutTemplate,
 } from 'lucide-react'
@@ -146,32 +146,35 @@ function PlatformStats({ stats, loading, index }) {
 
 /* ─── System health widget ───────────────────────────────── */
 
-const STATIC_SERVICES = [
-  { name: 'API Gateway',        key: 'api' },
-  { name: 'WhatsApp Webhook',   key: 'webhook' },
-  { name: 'Meta Cloud API',     key: 'meta' },
-  { name: 'Database (Primary)', key: 'db' },
-]
-
 function SystemHealthWidget({ health, loading }) {
-  const [expanded, setExpanded] = useState(false)
   const dbOk = health?.db?.connected !== false
 
-  const services = STATIC_SERVICES.map((s) => ({
-    ...s,
-    status: s.key === 'db' ? (dbOk ? 'operational' : 'down') : 'operational',
-  }))
+  // Only report what we can actually verify — no fake "operational" for services we never check.
+  // WhatsApp Webhook status is derived from real WebhookLog activity (health.webhook), not assumed.
+  const lastEventAt = health?.webhook?.lastEventAt ? new Date(health.webhook.lastEventAt) : null
+  const hoursSinceEvent = lastEventAt ? (Date.now() - lastEventAt.getTime()) / 3_600_000 : null
+  const webhookStatus = !lastEventAt ? 'unknown' : hoursSinceEvent <= 24 ? 'operational' : 'degraded'
 
-  const visible = expanded ? services : services.slice(0, 3)
+  const services = [
+    { name: 'Database (Primary)', key: 'db', status: dbOk ? 'operational' : 'down' },
+    {
+      name: 'WhatsApp Webhook',
+      key: 'webhook',
+      status: webhookStatus,
+      detail: lastEventAt ? `Last event ${Math.round(hoursSinceEvent)}h ago · ${health.webhook.count24h} in 24h` : 'No events received yet',
+    },
+  ]
 
   const statusIcon = (s) => {
     if (s === 'operational') return <CheckCircle2 size={13} className="text-green-500 shrink-0" />
     if (s === 'degraded')    return <AlertTriangle size={13} className="text-amber-500 shrink-0" />
+    if (s === 'unknown')     return <Clock size={13} className="text-gray-400 shrink-0" />
     return <XCircle size={13} className="text-red-500 shrink-0" />
   }
   const statusCls = (s) => ({
     operational: { text: 'text-green-600', bg: 'bg-green-50 border-green-200', label: 'Operational' },
-    degraded:    { text: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', label: 'Degraded' },
+    degraded:    { text: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', label: 'Quiet' },
+    unknown:     { text: 'text-gray-500',  bg: 'bg-gray-50 border-gray-200',   label: 'No data' },
     down:        { text: 'text-red-600',   bg: 'bg-red-50 border-red-200',     label: 'Down' },
   }[s])
 
@@ -198,7 +201,7 @@ function SystemHealthWidget({ health, loading }) {
 
       <div className="divide-y divide-gray-50">
         <AnimatePresence initial={false}>
-          {visible.map((svc, i) => {
+          {services.map((svc, i) => {
             const st = statusCls(svc.status)
             return (
               <motion.div
@@ -210,22 +213,17 @@ function SystemHealthWidget({ health, loading }) {
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   {statusIcon(svc.status)}
-                  <p className="text-sm font-medium text-gray-800 truncate">{svc.name}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{svc.name}</p>
+                    {svc.detail && <p className="text-xs text-gray-400 truncate">{svc.detail}</p>}
+                  </div>
                 </div>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${st.bg} ${st.text}`}>{st.label}</span>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full border shrink-0 ${st.bg} ${st.text}`}>{st.label}</span>
               </motion.div>
             )
           })}
         </AnimatePresence>
       </div>
-
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-gray-400 hover:text-gray-600 border-t border-gray-100 hover:bg-gray-50 transition-colors"
-      >
-        {expanded ? 'Show less' : `Show ${services.length - 3} more`}
-        <ChevronRight size={12} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
-      </button>
     </div>
   )
 }
@@ -355,14 +353,9 @@ export default function AdminDashboard() {
         description="Platform-wide overview for SarnConnect"
         breadcrumbs={['Admin', 'Dashboard']}
         action={
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => navigate('/admin/tenants/new')}>
-              New Client
-            </Button>
-            <Button size="sm" icon={<RefreshCw size={14} />} onClick={load}>
-              Refresh
-            </Button>
-          </div>
+          <Button size="sm" icon={<RefreshCw size={14} />} onClick={load}>
+            Refresh
+          </Button>
         }
       />
 
