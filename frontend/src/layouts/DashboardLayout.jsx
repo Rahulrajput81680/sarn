@@ -56,15 +56,20 @@ function SidebarContent({ sidebarOpen, onNavClick = () => {} }) {
   return (
     <aside
       className={clsx(
-        'flex flex-col border-r border-2 border-green-300 transition-all duration-[220ms] ease-out shrink-0 relative overflow-hidden',
+        'flex flex-col border-r border-2 border-green-300 transition-all duration-[220ms] ease-out shrink-0 relative',
         sidebarOpen ? 'w-56' : 'w-16'
       )}
       style={{
         background: 'linear-gradient(175deg, #ffffff 0%, #ffffff 40%, #f0fdf4 64%, #dcfce7 85%, #bbf7d0 100%)',
       }}
     >
-      <div className="pointer-events-none absolute -bottom-10 -right-10 w-40 h-40 rounded-full bg-green-400/15 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-20 -left-6 w-24 h-24 rounded-full bg-emerald-300/10 blur-2xl" />
+      {/* overflow-hidden lives on this decorative-only layer, not the <aside> itself — otherwise
+          it also clips the collapsed-sidebar profile flyout, which needs to render wider than
+          the ~64px collapsed sidebar and spill over it. */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -bottom-10 -right-10 w-40 h-40 rounded-full bg-green-400/15 blur-3xl" />
+        <div className="absolute bottom-20 -left-6 w-24 h-24 rounded-full bg-emerald-300/10 blur-2xl" />
+      </div>
 
       <div className="h-14 flex items-center justify-center px-3 border-b border-green-100/60">
         {sidebarOpen ? (
@@ -154,7 +159,13 @@ function SidebarContent({ sidebarOpen, onNavClick = () => {} }) {
 
       <div className="relative border-t border-green-100/60 px-3 py-3" ref={profileRef}>
         {profileMenuOpen && (
-          <div className="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-xl shadow-lg border border-gray-100/80 py-1.5 z-20">
+          <div className={clsx(
+            'absolute bottom-full mb-2 bg-white rounded-xl shadow-lg border border-gray-100/80 py-1.5 z-20',
+            // Collapsed sidebar is only ~64px wide — left-3 right-3 would squeeze this to ~40px
+            // and wrap/overlap the menu text. Use a fixed width anchored to the left edge instead,
+            // letting it overflow past the narrow sidebar like a normal flyout menu.
+            sidebarOpen ? 'left-3 right-3' : 'left-3 w-48'
+          )}>
             <button
               onClick={() => { setProfileMenuOpen(false); navigate('/profile') }}
               className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
